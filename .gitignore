@@ -1,0 +1,7 @@
+build
+dist
+qtip.egg-info
+*~
+.*.swp
+*.pyc
+*.txt
