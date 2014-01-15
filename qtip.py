@@ -375,10 +375,24 @@ class QtipWindow(QtGui.QMainWindow):
     def openTim(self, parfilename):
         timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
+        # Obtain the directory name of the timfile, and change to it
+        timfiletup = os.path.split(timfilename)
+        dirname = timfiletup[0]
+        reltimfile = timfiletup[-1]
+        relparfile = os.path.relpath(parfilename, dirname)
+        savedir = os.getcwd()
+
+        # Change directory to the base directory of the tim-file to deal with
+        # INCLUDE statements in the tim-file
+        os.chdir(dirname)
+
         # Load the pulsar
         cell = "psr = t2.tempopulsar('"+parfilename+"', '"+timfilename+"')"
         self.kernel.shell.run_cell(cell)
         psr = self.kernel.shell.ns_table['user_local']['psr']
+
+        # Change directory back to where we were
+        os.chdir(savedir)
 
         # Update the plk widget
         self.plkWidget.setPulsar(psr)
