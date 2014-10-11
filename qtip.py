@@ -24,6 +24,9 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure
 
+# Advanced command-line option parsing
+from optparse import OptionParser
+
 # Numpy etc.
 import numpy as np
 import time
@@ -53,6 +56,24 @@ object?   -> Details about 'object', use 'object??' for extra details.
 
 import numpy as np, matplotlib.pyplot as plt, libstempo as t2
 """
+
+
+# Parse the command-line options
+parser = OptionParser()
+
+# Add some options with add_option
+#parser.add_option("-d", "--dataOnly",
+#                  action="store_true", dest="dataOnly", default=False,
+#                  help="Just include the data in h5 file [default false]") 
+
+(options, args) = parser.parse_args()
+
+if len(args) >= 2:
+    partile = args[0]
+    timfile = args[1]
+else:
+    parfile = None
+    timfile = None
 
 
 """

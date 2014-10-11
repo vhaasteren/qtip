@@ -3,7 +3,134 @@
 # vim: tabstop=4:softtabstop=4:shiftwidth=4:expandtab
 
 """
-qtip: Qt interactive interface for PTA data analysis tools
+Plk: Qt interactive emulator of the tempo2 plk emulator
+
+
+Help from tempo2 plk:
+
+Fitting and Calculating Options
+===============================
+b          Bin TOAs within certain time bin
+c          Change fitting parameters
+d (or right mouse) delete point
+ctrl-d     delete highlighted points
+e          multiply all TOA errors by given amount
+F          run FITWAVES
+ctrl-f     remove FITWAVES curve from residuals
+i (or left mouse) identify point
+M          toggle removing mean from the residuals
+ctrl-n     Add white noise to site-arrival-times
+p          Change model parameter values
+ctrl-p     Toggle plotting versus pulse phase
+r          Reset (reload .par and .tim file)
+ctrl-r     Select regions in MJDs and write to file
+w          toggle fitting using weights
+x          redo fit using post-fit parameters
++          add positive phase jump
+-          add negative phase jump
+BACKSPACE  remove all phase jumps
+ctrl-=     add period to residuals above cursor
+/          re-read .par file
+
+Plot Selection
+==============
+D (or middle mouse) view profile
+s          start of zoom section
+f          finish of zoom section
+Ctrl-u     Overplot Shapiro delay
+u          unzoom
+v          view profiles for highlighted points
+V          define the user parameter
+Ctrl-v     for pre-fit plotting, decompose the timing model fits
+           (i.e. overplot the fitted curves - only for prefit plots
+ctrl-X     select x-axis specifically
+y          Rescale y-axis only
+Y          set y-scale exactly
+ctrl-Y     select y-axis specifically
+z          Zoom using mouse
+<          in zoom mode include previous observation
+>          in zoom mode include next observation
+1          plot pre-fit  residuals vs date
+2          plot post-fit residuals vs date
+3          plot pre-fit  residuals vs orbital phase
+4          plot post-fit residuals vs orbital phase
+5          plot pre-fit  residuals serially
+6          plot post-fit residuals serially
+7          plot pre-fit  residuals vs day of year
+8          plot post-fit residuals vs day of year
+9          plot pre-fit  residuals vs frequency
+a          plot post-fit residuals vs frequency
+!          plot pre-fit  residuals vs TOA error
+@          plot post-fit residuals vs TOA error
+#          plot pre-fit  residuals vs user values
+$          plot post-fit residuals vs user values
+%          plot pre-fit  residuals vs year
+^          plot post-fit residuals vs year
+&          plot pre-fit residuals vs elevation
+*          plot post-fit residuals vs elevation
+(          plot pre-fit residuals vs rounded MJD
+)          plot post-fit residuals vs rounded MJD
+
+Options for selecting x and y axes individually
+Ctrl-X n   set x-axis
+Ctrl-Y n   set y-axis
+where n = 
+
+1         plot pre-fit residuals
+2         plot post-fit residuals
+3         plot centred MJD
+4         plot orbital phase
+5         plot TOA number
+6         plot day of year
+7         plot frequency
+8         plot TOA error
+9         plot user value
+0         plot year
+-         plot elevation
+
+Display Options
+===============
+B          place periodic marks on the x-scale
+ctrl-c     Toggle between period epoch and centre for the reference epoch
+E          toggle plotting error bars
+g          change graphics device
+G          change gridding on graphics device
+ctrl-e     highlight points more than 3 sigma from the mean
+H          highlight points with specific flag using symbols
+ctrl-i     highlight points with specific flag using colours
+I          indicate individual observations
+j          draw line between points 
+J          toggle plotting points
+L          add label to plot
+ctrl-l     add line to plot
+ctrl-m     toggle menu bar
+N          highlight point with a given filename
+o          obtain/highlight all points currently in plot
+ctrl-T     set text size
+U          unhighlight selected points
+[          toggle plotting x-axis on log scale
+]          toggle plotting y-axis on log scale
+
+Output Options
+==============
+Ctrl-J     output listing of residuals in Jodrell format
+Ctrl-O     output listing of residuals in simple format
+l          list all data points in zoomed region
+m          measure distance between two points
+P          write new .par file
+Ctrl-w     over-write input .par file
+S          save a new .tim file
+Ctrl-S     overwrite input.tim file
+t          Toggle displaying statistics for zoomed region
+Ctrl-z     Listing of all highlighted points
+
+Various Options
+===============
+C          run unix command with filenames for highlighted observations
+h          this help file
+q          quit
+
+
 
 """
 
