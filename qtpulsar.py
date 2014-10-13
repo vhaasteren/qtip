@@ -191,6 +191,11 @@ class APulsar(object):
         return self._psr.stoas
 
     @property
+    def toaerrs(self):
+        """ TOA uncertainties """
+        return self._psr.toaerrs
+
+    @property
     def freqs(self):
         """ Observing frequencies """
         return self._psr.freqs

@@ -440,7 +440,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
     Given a label, get the plotting quantity
     """
     def getPlotArray(self, label):
-        x = np.zeros(len(self.psr.toas()))
+        x = np.zeros(len(self.psr.toas))
         des = ""
 
         psr = self.psr
@@ -451,20 +451,20 @@ class PlkXYPlotWidget(QtGui.QWidget):
             x = psr.residuals() * 1e6
             des = r"Post-fit residual ($\mu$s)"
         elif label == 'date':
-            x = psr.toas()
+            x = psr.toas
             des = r"MJD"
         elif label == 'orbital phase':
             if psr['T0'].set:
-                tpb = (psr.toas() - psr['T0'].val) / psr['PB'].val
+                tpb = (psr.toas - psr['T0'].val) / psr['PB'].val
             elif psr['TASC'].set:
-                tpb = (psr.toas() - psr['TASC'].val) / psr['PB'].val
+                tpb = (psr.toas - psr['TASC'].val) / psr['PB'].val
             else:
                 print("ERROR: Neither T0 nor tasc set...")
-                tpb = (psr.toas() - psr['T0'].val) / psr['PB'].val
+                tpb = (psr.toas - psr['T0'].val) / psr['PB'].val
                 
             if not psr['PB'].set:
                 print("WARNING: This is not a binary pulsar")
-                x = np.zeros(len(psr.toas()))
+                x = np.zeros(len(psr.toas))
             else:
                 if psr['PB'].set:
                     pbdot = psr['PB'].val
@@ -474,7 +474,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
             print("WARNING: parameter {0} not yet implemented".format(label))
         elif label == 'day of year' or label == 'year':
             # Adjusted from plk_plug.C
-            jd = psr.toas() + 2400000.5
+            jd = psr.toas + 2400000.5
             ijd = np.round(jd)
             fjd = (jd + 0.5) - ijd
 

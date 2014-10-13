@@ -31,15 +31,18 @@ from optparse import OptionParser
 import numpy as np
 import time
 
+import qtpulsar as qp
+
 # Import libstempo and Piccard
-try:
-    import piccard as pic
-except ImportError:
-    pic is None
-try:
-    import libstempo as t2
-except ImportError:
-    t2 = None
+#try:
+#    import piccard as pic
+#except ImportError:
+#    pic is None
+
+#try:
+#    import libstempo as t2
+#except ImportError:
+#    t2 = None
 
 from plk import *
 
@@ -54,7 +57,7 @@ help      -> Python's own help system.
 object?   -> Details about 'object', use 'object??' for extra details.
 %guiref   -> A brief reference about the graphical user interface.
 
-import numpy as np, matplotlib.pyplot as plt, libstempo as t2
+import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp
 """
 
 
@@ -76,10 +79,10 @@ else:
     timfile = None
 
 
-"""
-The Piccard main window
-"""
 class PiccardWidget(QtGui.QWidget):
+    """
+    The Piccard main window (Not yet implemented)
+    """
     def __init__(self, parent=None, **kwargs):
         super(PiccardWidget, self).__init__(parent, **kwargs)
 
@@ -90,12 +93,12 @@ class PiccardWidget(QtGui.QWidget):
     def initPiccard(self):
         print("Hello, Piccard!")
 
-"""
-The open-something Widget. First shown in the main window, if it is not started
-with a command to open any file to begin with. This way, we don't have to show
-an empty graph
-"""
 class OpenSomethingWidget(QtGui.QWidget):
+    """
+    The open-something Widget. First shown in the main window, if it is not
+    started with a command to open any file to begin with. This way, we don't
+    have to show an empty graph
+    """
     def __init__(self, parent=None, openFile=None, **kwargs):
         super(OpenSomethingWidget, self).__init__(parent, **kwargs)
 
@@ -104,10 +107,10 @@ class OpenSomethingWidget(QtGui.QWidget):
 
         self.initOSWidget()
 
-    """
-    Initialise the widget with a button and a label
-    """
     def initOSWidget(self):
+        """
+        Initialise the widget with a button and a label
+        """
         self.vbox = QtGui.QVBoxLayout()
 
         button = QtGui.QPushButton("Open a file...")
@@ -116,24 +119,24 @@ class OpenSomethingWidget(QtGui.QWidget):
 
         self.setLayout(self.vbox)
 
-    """
-    Display the open file dialog, and send the parent window the order to open
-    the file
-    """
     def openFile(self):
+        """
+        Display the open file dialog, and send the parent window the order to
+        open the file
+        """
         if not self.openFileFn is None:
             filename = QtGui.QFileDialog.getOpenFileName(self, 'Open file', '~/')
             self.openFileFn(filename)
 
 
 
-"""
-Main Qtip window
-
-Note, is the main window now, but the content will later be moved to a libstempo
-tab, as part of the Piccard suite
-"""
 class QtipWindow(QtGui.QMainWindow):
+    """
+    Main Qtip window
+
+    Note, is the main window now, but the content will later be moved to a
+    libstempo tab, as part of the Piccard suite
+    """
     
     def __init__(self, parent=None):
         super(QtipWindow, self).__init__(parent)
@@ -153,6 +156,10 @@ class QtipWindow(QtGui.QMainWindow):
         self.initQtipLayout()
         self.setQtipLayout(whichWidget='opensomething', showIPython=False)
 
+        # We are still in MAJOR testing mode, so open a test-pulsar right away
+        # (delete this line when going into production)
+        self.requestOpenPlk(testpulsar=True)
+
         self.show()
 
     def __del__(self):
@@ -163,10 +170,10 @@ class QtipWindow(QtGui.QMainWindow):
         """
         QtGui.QMessageBox.about(self, "About the demo", msg.strip())
 
-    """
-    Initialise the user-interface elements
-    """
     def initUI(self):
+        """
+        Initialise the user-interface elements
+        """
         # Create the main-frame widget, and the layout
         self.mainFrame = QtGui.QWidget()
         self.setCentralWidget(self.mainFrame)
@@ -223,10 +230,10 @@ class QtipWindow(QtGui.QMainWindow):
         self.prevShowIPython = False
         self.prevWhichWidget = 'None'
 
-    """
-    Create the IPython Kernel
-    """
     def createIPythonKernel(self):
+        """
+        Create the IPython Kernel
+        """
         # Create an in-process kernel
         self.kernelManager = QtInProcessKernelManager()
         self.kernelManager.start_kernel()
@@ -238,13 +245,13 @@ class QtipWindow(QtGui.QMainWindow):
         self.kernel.shell.enable_matplotlib(gui='inline')
 
         # Load the necessary packages in the embedded kernel
-        cell = "import numpy as np, matplotlib.pyplot as plt, libstempo as t2"
+        cell = "import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp"
         self.kernel.shell.run_cell(cell)
 
-    """
-    Create the IPython widget
-    """
     def createIPythonWidget(self):
+        """
+        Create the IPython widget
+        """
         self.consoleWidget = RichIPythonWidget()
         self.consoleWidget.setMinimumSize(600, 550)
         self.consoleWidget.banner = QtipBanner
@@ -255,37 +262,37 @@ class QtipWindow(QtGui.QMainWindow):
         self.consoleWidget.hide()
 
 
-    """
-    Create the OpenSomething widget. Do not add it to the layout yet
-
-    TODO:   probably should use a signal to implement this call instead of
-            openParTim
-    """
     def createOpenSomethingWidget(self):
+        """
+        Create the OpenSomething widget. Do not add it to the layout yet
+
+        TODO:   probably should use a signal to implement this call instead of
+                openParTim
+        """
         self.openSomethingWidget = OpenSomethingWidget(parent=self.mainFrame, \
                 openFile=self.requestOpenPlk)
         self.openSomethingWidget.hide()
 
-    """
-    Create the Plk widget
-    """
     def createPlkWidget(self):
+        """
+        Create the Plk widget
+        """
         self.plkWidget = PlkWidget(parent=self.mainFrame)
         self.plkWidget.hide()
 
 
-    """
-    Toggle the IPython widget on or off
-    """
     def toggleIPython(self):
+        """
+        Toggle the IPython widget on or off
+        """
         self.showIPython = not self.showIPython
 
         self.setQtipLayout()
 
-    """
-    Initialise the Qtip layout
-    """
     def initQtipLayout(self):
+        """
+        Initialise the Qtip layout
+        """
         self.mainFrame.setMinimumSize(650, 550)
         self.hbox.addWidget(self.openSomethingWidget)
         self.hbox.addWidget(self.plkWidget)
@@ -293,10 +300,10 @@ class QtipWindow(QtGui.QMainWindow):
         self.hbox.addWidget(self.consoleWidget)
         self.mainFrame.setLayout(self.hbox)
 
-    """
-    Hide all widgets of the mainFrame
-    """
     def hideAllWidgets(self):
+        """
+        Hide all widgets of the mainFrame
+        """
         # Remove all widgets from the main window
         # ???
         """
@@ -317,10 +324,10 @@ class QtipWindow(QtGui.QMainWindow):
         self.plkWidget.hide()
         self.consoleWidget.hide()
 
-    """
-    Show the correct widgets in the mainFrame
-    """
     def showVisibleWidgets(self):
+        """
+        Show the correct widgets in the mainFrame
+        """
         # Add the widgets we need
         if self.whichWidget.lower() == 'opensomething':
             self.openSomethingWidget.show()
@@ -340,19 +347,19 @@ class QtipWindow(QtGui.QMainWindow):
         #elif self.showIPython:
         #    self.consoleWidget.setFocus()
 
-    """
-    Given which widgets to show, display the right widgets and hide the rest
-
-    @param whichWidget:     Which widget to show
-    @param showIPython:     Whether to show the IPython console
-    """
     def setQtipLayout(self, whichWidget=None, showIPython=None):
+        """
+        Given which widgets to show, display the right widgets and hide the rest
+
+        @param whichWidget:     Which widget to show
+        @param showIPython:     Whether to show the IPython console
+        """
         if not whichWidget is None:
             self.whichWidget = whichWidget
         if not showIPython is None:
             self.showIPython = showIPython
 
-        # After hiding the widgets, wait 25 miliseconds before showing them again
+        # After hiding the widgets, wait 25 (or 0?) miliseconds before showing them again
         self.hideAllWidgets()
         QtCore.QTimer.singleShot(0, self.showVisibleWidgets)
 
@@ -364,22 +371,31 @@ class QtipWindow(QtGui.QMainWindow):
         self.mainFrame.show()
 
 
-    """
-    Request to open a file in the plk widget
+    def requestOpenPlk(self, parfilename=None, timfilename=None, \
+            testpulsar=False):
+        """
+        Request to open a file in the plk widget
 
-    @param filename:    If we already know the name of the parfile, this is it
-    """
-    def requestOpenPlk(self, filename=None):
+        @param parfilename:     The parfile to open. If none, ask the user
+        @param timfilename:     The timfile to open. If none, ask the user
+        """
         self.setQtipLayout(whichWidget='plk', showIPython=self.showIPython)
-        if filename is None:
-            self.openParTim()
-        else:
-            self.openTim(filename)
 
-    """
-    Open a par-file and a tim-file
-    """
+        if parfilename is None and not testpulsar:
+            parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
+
+        if timfilename is None and not testpulsar:
+            timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
+
+        # Load the pulsar
+        self.openPulsar(parfilename, timfilename, engine='libstempo', \
+                testpulsar=testpulsar)
+
+
     def openParTim(self, filename=None):
+        """
+        Open a par-file and a tim-file
+        """
         print("openParTim called with {0}".format(filename))
 
         # Ask the user for a par and tim file, and open these with libstempo
@@ -388,47 +404,61 @@ class QtipWindow(QtGui.QMainWindow):
         else:
             parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
 
-        self.openTim(parfilename)
-
-    """
-    Open a tim-file, given a par file
-    """
-    def openTim(self, parfilename):
         timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
-        # Obtain the directory name of the timfile, and change to it
-        timfiletup = os.path.split(timfilename)
-        dirname = timfiletup[0]
-        reltimfile = timfiletup[-1]
-        relparfile = os.path.relpath(parfilename, dirname)
-        savedir = os.getcwd()
-
-        # Change directory to the base directory of the tim-file to deal with
-        # INCLUDE statements in the tim-file
-        os.chdir(dirname)
-
         # Load the pulsar
-        cell = "psr = t2.tempopulsar('"+parfilename+"', '"+timfilename+"')"
-        self.kernel.shell.run_cell(cell)
-        psr = self.kernel.shell.ns_table['user_local']['psr']
+        self.openPulsar(parfilename, timfilename, engine='libstempo')
 
-        # Change directory back to where we were
-        os.chdir(savedir)
+    def openPulsar(self, parfilename, timfilename, engine='libstempo',
+            testpulsar=False):
+        """
+        Open a pulsar, given a parfile and a timfile
 
-        # Update the plk widget
-        self.plkWidget.setPulsar(psr)
+        @param parfilename: The name of the parfile to open
+        @param timfilename: The name fo the timfile to open
+        @param engine:      Which pulsar timing engine to use [libstempo]
+        @param testpulsar:  If True, open the test pulsar (J1744, NANOGrav)
+        """
+        if engine == 'libstempo':
+            if not testpulsar:
+                # Obtain the directory name of the timfile, and change to it
+                timfiletup = os.path.split(timfilename)
+                dirname = timfiletup[0]
+                reltimfile = timfiletup[-1]
+                relparfile = os.path.relpath(parfilename, dirname)
+                savedir = os.getcwd()
 
-        # Communicating with the kernel goes as follows
-        # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
-        # print("Embedded, we have:", self.kernel.shell.ns_table['user_local']['foo'])
+                # Change directory to the base directory of the tim-file to deal with
+                # INCLUDE statements in the tim-file
+                os.chdir(dirname)
+
+                # Load the pulsar
+                # cell = "psr = t2.tempopulsar('"+parfilename+"', '"+timfilename+"')"
+                cell = "psr = qp.APulsar('"+parfilename+"', '"+timfilename+"')"
+                self.kernel.shell.run_cell(cell)
+                psr = self.kernel.shell.ns_table['user_local']['psr']
+
+                # Change directory back to where we were
+                os.chdir(savedir)
+            else:
+                cell = "psr = qp.APulsar(testpulsar=True)"
+                self.kernel.shell.run_cell(cell)
+                psr = self.kernel.shell.ns_table['user_local']['psr']
+
+            # Update the plk widget
+            self.plkWidget.setPulsar(psr)
+
+            # Communicating with the kernel goes as follows
+            # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
+            # print("Embedded, we have:", self.kernel.shell.ns_table['user_local']['foo'])
 
 
-    """
-    Handle a key-press event
-
-    @param event:   event that is handled here
-    """
     def keyPressEvent(self, event):
+        """
+        Handle a key-press event
+
+        @param event:   event that is handled here
+        """
 
         key = event.key()
 
