@@ -208,6 +208,10 @@ class APulsar(object):
     def residuals(self, updatebats=True, formresiduals=True):
         return self._psr.residuals(updatebats, formresiduals)
 
+    @property
+    def prefitresiduals(self):
+        return self._psr.prefit.residuals
+
     def designmatrix(self, updatebats=True, fixunits=False):
         return self._psr.designmatrix(updatebats, fixunits)
 
