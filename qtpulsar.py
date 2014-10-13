@@ -29,6 +29,8 @@ from matplotlib.figure import Figure
 # Numpy etc.
 import numpy as np
 import time
+import tempfile
+from constants import *
 
 # Import libstempo and Piccard
 try:
@@ -42,18 +44,43 @@ except ImportError:
     lt = None
 
 
+
 class APulsar(object):
     """
     Abstract pulsar class. For now only uses libstempo, but functionality will
-    be delegated to derived classes when implementing PINT/piccard/PAL
+    be delegated to derived classes when implementing
+    PINT/piccard/PAL/enterprise/whatever
     """
 
-    def __init__(self, parfile, timfile):
+    def __init__(self, parfile=None, timfile=None, testpulsar=False):
         """
         Initialize the pulsar object
+
+        @param parfile:     Filename of par file
+        @param timfile:     Filename of tim file
+        @param testpulsar:  If true, load J1744 test pulsar
         """
         
-        _psr = lt.tempopulsar(parfile, timfile)
+        if testpulsar:
+            # Write a test-pulsar, and open that for testing
+            parfilename = tempfile.mktemp()
+            timfilename = tempfile.mktemp()
+            parfile = open(parfilename, 'w')
+            timfile = open(timfilename, 'w')
+            parfile.write(J1744_parfile)
+            timfile.write(J1744_timfile)
+            parfile.close()
+            timfile.close()
+
+            self._psr = lt.tempopulsar(parfilename, timfilename)
+
+            os.remove(parfilename)
+            os.remove(timfilename)
+        elif parfile is not None and timfile is not None:
+            self._psr = lt.tempopulsar(parfile, timfile)
+        else:
+            raise ValueError("No valid pulsar to load")
+
         _interface = "libstempo"
 
     @property
@@ -91,7 +118,7 @@ class APulsar(object):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted (deprecated, use fitvals)."""
         return self._psr.vals
 
-    @property.setter
+    @vals.setter
     def vals(self, values):
         self._psr.fitvals = values
 
@@ -100,7 +127,7 @@ class APulsar(object):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted."""
         return self._psr.fitvals
 
-    @property.setter
+    @fitvals.setter
     def fitvals(self, values):
         self._psr.fitvals = values
 
@@ -114,7 +141,7 @@ class APulsar(object):
         """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
         return self._psr.fiterrs
 
-    @property.setter
+    @fiterrs.setter
     def fiterrs(self, values):
         self._psr.fiterrs = values
 
@@ -123,7 +150,7 @@ class APulsar(object):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that have been set."""
         return self._psr.setvals
 
-    @property.setter
+    @setvals.setter
     def setvals(self, values):
         self._psr.setvals = values
 
@@ -148,7 +175,7 @@ class APulsar(object):
     def deleted(self):
         return self._psr.deleted
 
-    @property.setter
+    @deleted.setter
     def deleted(self, values):
         self._psr.deleted = values
 
@@ -195,4 +222,3 @@ class APulsar(object):
         self._psr(timfile)
 
 
-    @property
