@@ -158,7 +158,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         # We are still in MAJOR testing mode, so open a test-pulsar right away
         # (delete this line when going into production)
-        self.requestOpenPlk(testpulsar=True)
+        self.requestOpenPlk(testpulsar=True, engine='pint')
 
         self.show()
 
@@ -372,7 +372,7 @@ class QtipWindow(QtGui.QMainWindow):
 
 
     def requestOpenPlk(self, parfilename=None, timfilename=None, \
-            testpulsar=False):
+            testpulsar=False, engine='libstempo'):
         """
         Request to open a file in the plk widget
 
@@ -388,11 +388,11 @@ class QtipWindow(QtGui.QMainWindow):
             timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
         # Load the pulsar
-        self.openPulsar(parfilename, timfilename, engine='libstempo', \
+        self.openPulsar(parfilename, timfilename, engine=engine, \
                 testpulsar=testpulsar)
 
 
-    def openParTim(self, filename=None):
+    def openParTim(self, filename=None, engine='libstempo'):
         """
         Open a par-file and a tim-file
         """
@@ -407,7 +407,7 @@ class QtipWindow(QtGui.QMainWindow):
         timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
         # Load the pulsar
-        self.openPulsar(parfilename, timfilename, engine='libstempo')
+        self.openPulsar(parfilename, timfilename, engine=engine)
 
     def openPulsar(self, parfilename, timfilename, engine='libstempo',
             testpulsar=False):
@@ -419,6 +419,13 @@ class QtipWindow(QtGui.QMainWindow):
         @param engine:      Which pulsar timing engine to use [libstempo]
         @param testpulsar:  If True, open the test pulsar (J1744, NANOGrav)
         """
+        if engine=='pint':
+            trypint = True
+        else:
+            trypint = False
+
+        engine, pclass = qp.get_engine(trypint=trypint)
+
         if engine == 'libstempo':
             if not testpulsar:
                 # Obtain the directory name of the timfile, and change to it
@@ -434,23 +441,30 @@ class QtipWindow(QtGui.QMainWindow):
 
                 # Load the pulsar
                 # cell = "psr = t2.tempopulsar('"+parfilename+"', '"+timfilename+"')"
-                cell = "psr = qp.LTPulsar('"+parfilename+"', '"+timfilename+"')"
+                cell = "psr = qp."+pclass+"('"+parfilename+"', '"+timfilename+"')"
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']
 
                 # Change directory back to where we were
                 os.chdir(savedir)
             else:
-                cell = "psr = qp.LTPulsar(testpulsar=True)"
+                cell = "psr = qp."+pclass+"(testpulsar=True)"
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']
+        elif engine == 'pint':
+            psr = qp.PPulsar(testpulsar=True)
+            cell = "psr = qp."+pclass+"(testpulsar=True)"
+            self.kernel.shell.run_cell(cell)
+            psr = self.kernel.shell.ns_table['user_local']['psr']
+        else:
+            raise NotImplemented("Only works with PINT/libstempo")
 
-            # Update the plk widget
-            self.plkWidget.setPulsar(psr)
+        # Update the plk widget
+        self.plkWidget.setPulsar(psr)
 
-            # Communicating with the kernel goes as follows
-            # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
-            # print("Embedded, we have:", self.kernel.shell.ns_table['user_local']['foo'])
+        # Communicating with the kernel goes as follows
+        # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
+        # print("Embedded, we have:", self.kernel.shell.ns_table['user_local']['foo'])
 
 
     def keyPressEvent(self, event):

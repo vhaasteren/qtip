@@ -39,29 +39,52 @@ import jdcal        # pip install jdcal
 try:
     import piccard as pic
     print("Piccard available")
+    have_piccard = True
 except ImportError:
     pic = None
     print("Piccard not available")
+    have_piccard = False
 
 try:
     import libstempo as lt
     print("Libstempo available")
+    have_libstempo = True
 except ImportError:
     lt = None
     print("Libstempo not available")
+    have_libstempo = False
 
 try:
     import pint.models as tm
     from pint.phase import Phase
     from pint import toa
-    import pint_temp as pinttemp
+    import pint_temp
     print("PINT available")
+    have_pint = True
 except ImportError:
     tm = None
     Phase = None
     toa = None
-    tempo2_utils = None
+    pint_temp = None
     print("PINT not available")
+    have_pint = False
+
+def get_engine(trypint=True):
+    """
+    Return a working engine
+
+    @param trypint: If True, give priority to pint
+    """
+    if not trypint and have_libstempo:
+        return 'libstempo', 'LTPulsar'
+    elif have_pint:
+        return 'pint', 'PPulsar'
+    elif have_libstempo:
+        return 'libstempo', 'LTPulsar'
+    elif have_piccard:
+        raise NotImplemented("Piccard pulsars not yet implemented")
+    else:
+        raise NotImplemented("Other pulsars not yet implemented")
 
 
 
@@ -287,8 +310,7 @@ class PPulsar(object):
             raise ValueError("No valid pulsar to load")
 
         # We have a par/tim file. Read them in!
-
-        m.read_parfile(parfile)
+        m.read_parfile(parfilename)
 
         print("model.as_parfile():")
         print(m.as_parfile())
@@ -299,17 +321,17 @@ class PPulsar(object):
             planet_ephems = False
 
         t0 = time.time()
-        t = toa.get_TOAs(timfile)
+        t = toa.get_TOAs(timfilename)
         time_toa = time.time() - t0
 
         sys.stderr.write("Read/corrected TOAs in %.3f sec\n" % time_toa)
 
-        mjds = t.get_mjds()
-        d_tdbs = numpy.array([x.tdb.delta_tdb_tt for x in t.table['mjd']])
-        errs = t.get_errors()
-        resids = numpy.zeros_like(mjds)
-        ss_roemer = numpy.zeros_like(mjds)
-        ss_shapiro = numpy.zeros_like(mjds)
+        self._mjds = t.get_mjds()
+        d_tdbs = np.array([x.tdb.delta_tdb_tt for x in t.table['mjd']])
+        self._toaerrs = t.get_errors()
+        resids = np.zeros_like(self._mjds)
+        ss_roemer = np.zeros_like(self._mjds)
+        ss_shapiro = np.zeros_like(self._mjds)
 
         sys.stderr.write("Computing residuals...\n")
         t0 = time.time()
@@ -323,113 +345,107 @@ class PPulsar(object):
         sys.stderr.write("Computed phases in %.3f sec\n" % time_phase)
 
         # resids in (approximate) us:
-        resids_us = resids / float(m.F0.value) * 1e6
-        sys.stderr.write("RMS PINT residuals are %.3f us\n" % resids_us.std())
-
-        # Get some general2 stuff
-        tempo2_vals = tempo2_utils.general2(parfile, timfile,
-                                            ['tt2tb', 'roemer', 'post_phase',
-                                             'shapiro', 'shapiroJ'])
-        t2_resids = tempo2_vals['post_phase'] / float(m.F0.value) * 1e6
-        diff_t2 = resids_us - t2_resids
-        diff_t2 -= diff_t2.mean()
-
-        # run tempo1 also, if the tempo_utils module is available
-        try:
-            import tempo_utils
-            t1_toas = tempo_utils.read_toa_file(timfile)
-            tempo_utils.run_tempo(t1_toas, t1_parfile)
-            t1_resids = t1_toas.get_resids(units='phase') / float(m.F0.value) * 1e6
-            diff_t1 = resids_us - t1_resids
-            diff_t1 -= diff_t1.mean()
-
-            diff_t2_t1 = t2_resids - t1_resids
-            diff_t2_t1 -= diff_t2_t1.mean()
-        except:
-            pass
-
-
+        self._resids_us = resids / float(m.F0.value) * 1e6
+        sys.stderr.write("RMS PINT residuals are %.3f us\n" % self._resids_us.std())
 
 
         if testpulsar:
             os.remove(parfilename)
             os.remove(timfilename)
 
+
     @property
     def name(self):
-        return self._psr.name
+        #return self._psr.name
+        return "J0000+0000"
 
     def __getitem__(self, key):
-        return self._psr[key]
+        #return self._psr[key]
+        return 0.0
 
     def __contains__(self, key):
-        return key in self._psr
+        #return key in self._psr
+        return False
 
     @property
     def pars(self):
         """Returns tuple of names of parameters that are fitted (deprecated, use fitpars)."""
-        return self._psr.fitpars
+        #return self._psr.fitpars
+        return ('none')
 
     @property
     def fitpars(self):
         """Returns tuple of names of parameters that are fitted."""
-        return self._psr.fitpars
+        #return self._psr.fitpars
+        return ('F0', 'F1')
 
     @property
     def setpars(self):
         """Returns tuple of names of parameters that have been set."""
-        return self._psr.setpars
+        #return self._psr.setpars
+        return ('F0', 'F1')
 
     @property
     def allpars(self):
         """Returns tuple of names of all tempo2 parameters (whether set or unset, fit or not fit)."""
-        return self._psr.allpars
+        #return self._psr.allpars
+        return ('F0', 'F1')
 
     @property
     def vals(self):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted (deprecated, use fitvals)."""
-        return self._psr.vals
+        #return self._psr.vals
+        return np.array([0.0, 0.0])
 
     @vals.setter
     def vals(self, values):
-        self._psr.fitvals = values
+        #self._psr.fitvals = values
+        pass
 
     @property
     def fitvals(self):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted."""
-        return self._psr.fitvals
+        #return self._psr.fitvals
+        return np.array([0.0, 0.0])
 
     @fitvals.setter
     def fitvals(self, values):
-        self._psr.fitvals = values
+        #self._psr.fitvals = values
+        pass
 
     @property
     def errs(self):
         """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        return self._psr.fiterrs
+        #return self._psr.fiterrs
+        return np.array([0.0, 0.0])
 
     @property
     def fiterrs(self):
         """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        return self._psr.fiterrs
+        #return self._psr.fiterrs
+        return np.array([0.0, 0.0])
 
     @fiterrs.setter
     def fiterrs(self, values):
-        self._psr.fiterrs = values
+        #self._psr.fiterrs = values
+        pass
 
     @property
     def setvals(self):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that have been set."""
-        return self._psr.setvals
+        #return self._psr.setvals
+        return np.array([0.0, 0.0])
 
     @setvals.setter
     def setvals(self, values):
-        self._psr.setvals = values
+        #self._psr.setvals = values
+        pass
 
     @property
     def seterrs(self):
         """Returns a numpy longdouble vector of errors of all parameters that have been set."""
-        return self._psr.seterrs
+        #return self._psr.seterrs
+        return np.array([0.0, 0.0])
 
     # the best way to access prefit pars would be through the same interface:
     # psr.prefit['parname'].val, psr.prefit['parname'].err, perhaps even psr.prefit.cols
@@ -437,69 +453,88 @@ class PPulsar(object):
 
     @property
     def binarymodel(self):
-        return self._psr.binaryModel
+        #return self._psr.binaryModel
+        return 'single'
 
     @property
     def ndim(self):
-        return self._psr.ndim
+        #return self._psr.ndim
+        return 2
 
     @property
     def deleted(self):
-        return self._psr.deleted
+        #return self._psr.deleted
+        return np.zeros(len(self._mjds), dtype=np.bool)
 
     @deleted.setter
     def deleted(self, values):
-        self._psr.deleted = values
+        #self._psr.deleted = values
+        pass
 
     @property
     def toas(self):
         """ Barycentric arrival times """
-        return self._psr.toas()
+        #return self._psr.toas()
+        return self._mjds
 
     @property
     def stoas(self):
         """ Site arrival times """
         raise NotImplemented("Not done")
-        return self._psr.stoas
+        #return self._psr.stoas
+        return self._mjds
 
     @property
     def toaerrs(self):
         """ TOA uncertainties """
-        return self._psr.toaerrs
+        return self._toaerrs
 
     @property
     def freqs(self):
         """ Observing frequencies """
-        return self._psr.freqs
+        #return self._psr.freqs
+        return np.zeros(len(self._mjds), dtype=np.double)
 
     @property
     def freqsSSB(self):
         """ Observing frequencies """
-        return self._psr.freqsSSB
+        #return self._psr.freqsSSB
+        return np.zeros(len(self._mjds), dtype=np.double)
 
     @property
     def residuals(self, updatebats=True, formresiduals=True):
-        return self._psr.residuals(updatebats, formresiduals)
+        #return self._psr.residuals(updatebats, formresiduals)
+        return self._resids_us*1e-6
 
     @property
     def prefitresiduals(self):
-        return self._psr.prefit.residuals
+        #return self._psr.prefit.residuals
+        return self._resids_us*1e-6
 
     def designmatrix(self, updatebats=True, fixunits=False):
-        return self._psr.designmatrix(updatebats, fixunits)
+        #return self._psr.designmatrix(updatebats, fixunits)
+        raise NotImplemented("Not done")
+        return None
 
     def fit(self, iters=1):
-        self._psr.fit(iters)
+        #self._psr.fit(iters)
+        raise NotImplemented("Not done")
 
     def chisq(self):
-        return self._psr.chisq()
+        raise NotImplemented("Not done")
+        #return self._psr.chisq()
+        return 0.0
 
     def rd_hms(self):
-        return self._psr.rd_hms()
+        raise NotImplemented("Not done")
+        #return self._psr.rd_hms()
+        return None
 
     def savepar(self, parfile):
-        self._psr.savepar(parfile)
+        #self._psr.savepar(parfile)
+        pass
 
     def savetim(self, timfile):
-        self._psr(timfile)
+        #self._psr(timfile)
+        pass
 

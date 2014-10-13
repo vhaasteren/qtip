@@ -434,7 +434,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
 
         psr = self.psr
         if label == 'pre-fit':
-            x = psr.prefit.residuals * 1e6
+            x = psr.prefitresiduals * 1e6
             des = r"Pre-fit residual ($\mu$s)"
         elif label == 'post-fit':
             x = psr.residuals * 1e6
