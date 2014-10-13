@@ -139,10 +139,6 @@ from __future__ import division
 import os, sys
 
 # Importing all the stuff for the IPython console widget
-from IPython.qt.console.rich_ipython_widget import RichIPythonWidget
-from IPython.qt.inprocess import QtInProcessKernelManager
-from IPython.lib import guisupport
-
 from PyQt4 import QtGui, QtCore
 
 # Importing all the stuff for the matplotlib widget
@@ -158,25 +154,17 @@ import time
 # For date conversions
 import jdcal        # pip install jdcal
 
-# Import libstempo and Piccard
-try:
-    import piccard as pic
-except ImportError:
-    pic is None
-try:
-    import libstempo as t2
-except ImportError:
-    t2 = None
 
-# TODO: Implement all features with signals, rather than sharing the psr object
-#       This code should not have any knowledge about libstempo. Just
-#       communicate it all back to the mainFrame
+# Design philosophy: All communication about the pulsar data is done through the
+# APulsar object, which is shared. This is a much more pragmatic solution than
+# implementing signals for all the functions.
 
-"""
-A widget that shows some action items, like re-fit, write par, write tim, etc.
-These items are shown as buttons
-"""
 class PlkActionsWidget(QtGui.QWidget):
+    """
+    A widget that shows some action items, like re-fit, write par, write tim,
+    etc.  These items are shown as buttons
+    """
+
     def __init__(self, parent=None, **kwargs):
         super(PlkActionsWidget, self).__init__(parent, **kwargs)
 
@@ -213,10 +201,10 @@ class PlkActionsWidget(QtGui.QWidget):
 
         self.setLayout(self.hbox)
 
-    """
-    We've got a pulsar
-    """
     def setPulsar(self, psr, updatePlot):
+        """
+        Memorize the pulsar
+        """
         self.psr = psr
         self.updatePlot = updatePlot
 
@@ -238,10 +226,11 @@ class PlkActionsWidget(QtGui.QWidget):
         print("Save fig clicked")
 
 
-"""
-A widget that allows one to select which parameters to fit for
-"""
 class PlkFitboxesWidget(QtGui.QWidget):
+    """
+    A widget that allows one to select which parameters to fit for
+    """
+
     def __init__(self, parent=None, **kwargs):
         super(PlkFitboxesWidget, self).__init__(parent, **kwargs)
 
@@ -256,31 +245,31 @@ class PlkFitboxesWidget(QtGui.QWidget):
         self.setPlkFitboxesLayout()
 
 
-    """
-    Set the layout of this widget
-    """
     def setPlkFitboxesLayout(self):
+        """
+        Set the layout of this widget
+        """
         # Initialise the layout of the fit-box Widget
         # Initially there are no fitboxes, so just add the hbox
         self.setLayout(self.hbox)
 
-    """
-    We've got a new pulsar
-
-    @param psr:     The new libstempo psr object
-    """
     def setPulsar(self, psr):
+        """
+        We've got a new pulsar
+
+        @param psr:     The new APulsar psr object
+        """
         self.psr = psr
         self.deleteFitCheckBoxes()
         self.addFitCheckBoxes(psr.setpars, psr.fitpars)
 
-    """
-    Add the fitting checkboxes at the top of the plk Window
-
-    @param setpars:     The parameters that are 'set' (in the model)
-    @param fitpars:     The parameters that are currently being fitted for
-    """
     def addFitCheckBoxes(self, setpars, fitpars):
+        """
+        Add the fitting checkboxes at the top of the plk Window
+
+        @param setpars:     The parameters that are 'set' (in the model)
+        @param fitpars:     The parameters that are currently being fitted for
+        """
         # Delete the fitboxes if there were still some left
         if not len(self.vboxes) == 0:
             self.deleteFitCheckBoxes()
@@ -309,10 +298,10 @@ class PlkFitboxesWidget(QtGui.QWidget):
             vbox.addStretch(1)
 
 
-    """
-    Delete all the checkboxes from the Widget. Used when a new pulsar is loaded
-    """
     def deleteFitCheckBoxes(self):
+        """
+        Delete all the checkboxes from the Widget. Used when a new pulsar is loaded
+        """
         for fcbox in self.vboxes:
             while fcbox.count():
                 item = fcbox.takeAt(0)
@@ -330,11 +319,11 @@ class PlkFitboxesWidget(QtGui.QWidget):
 
         self.vboxes = []
 
-    """
-    This is the signal handler when a checkbox is changed. The changed checkbox
-    value will be propagated back to the psr object.
-    """
     def changedFitCheckBox(self):
+        """
+        This is the signal handler when a checkbox is changed. The changed checkbox
+        value will be propagated back to the psr object.
+        """
         # Check who sent the signal
         sender = self.sender()
         parchanged = sender.text()
@@ -353,10 +342,10 @@ class PlkFitboxesWidget(QtGui.QWidget):
 
 
 
-"""
-A widget that allows one to choose which quantities to plot against each other
-"""
 class PlkXYPlotWidget(QtGui.QWidget):
+    """
+    A widget that allows one to choose which quantities to plot against each other
+    """
     def __init__(self, parent=None, **kwargs):
         super(PlkXYPlotWidget, self).__init__(parent, **kwargs)
 
@@ -383,7 +372,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
         # Clicking any button in the QButtonGroup will send this signal with the button
         # self.buttonGroup.buttonClicked[QtGui.QAbstractButton].connect(self.setLabel)
         # def setLabel(self, button):
-        self.xychoices = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'siderial', \
+        self.xychoices = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'sidereal', \
             'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
     
@@ -428,18 +417,18 @@ class PlkXYPlotWidget(QtGui.QWidget):
 
         self.setLayout(self.grid)
 
-    """
-    We've got a new pulsar!
-    """
     def setPulsar(self, psr, updatePlotL):
+        """
+        We've got a new pulsar!
+        """
         self.psr = psr
         self.updatePlotL = updatePlotL
 
 
-    """
-    Given a label, get the plotting quantity
-    """
     def getPlotArray(self, label):
+        """
+        Given a label, get the plotting quantity
+        """
         x = np.zeros(len(self.psr.toas))
         des = ""
 
@@ -448,7 +437,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
             x = psr.prefit.residuals * 1e6
             des = r"Pre-fit residual ($\mu$s)"
         elif label == 'post-fit':
-            x = psr.residuals() * 1e6
+            x = psr.residuals * 1e6
             des = r"Post-fit residual ($\mu$s)"
         elif label == 'date':
             x = psr.toas
@@ -470,7 +459,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
                     pbdot = psr['PB'].val
                     phase = tpb % 1
                     x = phase
-        elif label == 'siderial':
+        elif label == 'sidereal':
             print("WARNING: parameter {0} not yet implemented".format(label))
         elif label == 'day of year' or label == 'year':
             # Adjusted from plk_plug.C
@@ -540,7 +529,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
             x = self.psr.toaerrs
         elif label == 'elevation':
             print("WARNING: parameter {0} not yet implemented".format(label))
-            # Need to have observatory implemented in libstempo
+            # Need to have observatory implemented in APulsar
             """
                 observatory *obs;
                 double source_elevation;
@@ -556,6 +545,55 @@ class PlkXYPlotWidget(QtGui.QWidget):
             print("WARNING: parameter {0} not yet implemented".format(label))
         elif label == 'sidereal time':
             print("WARNING: parameter {0} not yet implemented".format(label))
+            """
+   else if (plot==13 || plot==14 || plot==15) 
+	  /* 13 = Sidereal time, 14 = hour angle, 15 = parallactic angle */
+   {
+	  double tsid,sdd,erad,hlt,alng,hrd;
+	  double toblq,oblq,pc,ph;
+	  double siteCoord[3],ha;
+	  observatory *obs;
+	  //      printf("In here\n");
+	  obs = getObservatory(psr[0].obsn[iobs].telID);
+	  erad = sqrt(obs->x*obs->x+obs->y*obs->y+obs->z*obs->z);//height(m)
+	  hlt  = asin(obs->z/erad); // latitude
+	  alng = atan2(-obs->y,obs->x); // longitude
+	  hrd  = erad/(2.99792458e8*499.004786); // height (AU)
+	  siteCoord[0] = hrd * cos(hlt) * 499.004786; // dist from axis (lt-sec)
+	  siteCoord[1] = siteCoord[0]*tan(hlt); // z (lt-sec)
+	  siteCoord[2] = alng; // longitude
+
+	  toblq = (psr[0].obsn[iobs].sat+2400000.5-2451545.0)/36525.0;
+	  oblq = (((1.813e-3*toblq-5.9e-4)*toblq-4.6815e1)*toblq +84381.448)/3600.0;
+
+	  pc = cos(oblq*M_PI/180.0+psr[0].obsn[iobs].nutations[1])*psr[0].obsn[iobs].nutations[0];
+
+	  lmst2(psr[0].obsn[iobs].sat+psr[0].obsn[iobs].correctionUT1/SECDAY,0.0,&tsid,&sdd);
+	  tsid*=2.0*M_PI;
+	  /* Compute the local, true sidereal time */
+	  ph = tsid+pc-siteCoord[2];  
+	  ha = (fmod(ph,2*M_PI)-psr[0].param[param_raj].val[0])/M_PI*12;
+	  if (plot==13)
+		 x[count] = (float)fmod(ph/M_PI*12,24.0);
+	  else if (plot==14)
+		 x[count] = (float)(fmod(ha,12));
+	  else if (plot==15)
+	  {
+		 double cp,sqsz,cqsz,pa;
+		 double phi,dec;
+		 phi =  hlt;
+		 dec =  psr[0].param[param_decj].val[0];
+		 cp =   cos(phi);
+		 sqsz = cp*sin(ha*M_PI/12.0);
+		 cqsz = sin(phi)*cos(dec)-cp*sin(dec)*cos(ha*M_PI/12.0);
+		 if (sqsz==0 && cqsz==0) cqsz=1.0;
+		 pa=atan2(sqsz,cqsz);
+		 x[count] = (float)(pa*180.0/M_PI);
+	  }
+	  //      printf("Local sidereal time = %s %g %g %g %g %g\n",psr[0].obsn[iobs].fname,ph,tsid,pc,siteCoord[2],x[count]);
+   }
+            """
+
         elif label == 'hour angle':
             print("WARNING: parameter {0} not yet implemented".format(label))
         elif label == 'para. angle':
@@ -563,10 +601,10 @@ class PlkXYPlotWidget(QtGui.QWidget):
         
         return x, des
 
-    """
-    Given a label, get the plotting quantity error if there is one
-    """
     def getPlotArrayErr(self, label):
+        """
+        Given a label, get the plotting quantity error if there is one
+        """
         x = None
         if label == 'pre-fit':
             x = self.psr.toaerrs
@@ -576,7 +614,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
             x = self.psr.toaerrs
         elif label == 'orbital phase':
             pass
-        elif label == 'siderial':
+        elif label == 'sidereal':
             x = self.psr.toaerrs
         elif label == 'day of year':
             pass
@@ -600,11 +638,11 @@ class PlkXYPlotWidget(QtGui.QWidget):
         return x
             
 
-    """
-    Assuming we have a pulsar, this function will return the x, y, yerr, and
-    labels for the plot to be made.
-    """
     def getPlot(self):
+        """
+        Assuming we have a pulsar, this function will return the x, y, yerr, and
+        labels for the plot to be made.
+        """
         x = None
         y = None
         yerr = None
@@ -622,17 +660,17 @@ class PlkXYPlotWidget(QtGui.QWidget):
 
         return (x, y, yerr, xlabel, ylabel, title)
 
-    """
-    The x-plot radio buttons have been updated
-    """
     def updateXPlot(self, newid):
+        """
+        The x-plot radio buttons have been updated
+        """
         self.xSelected = newid #-2 - newid     # WTF????
         self.updateChoice()
 
-    """
-    The y-plot radio buttons have been updated
-    """
     def updateYPlot(self, newid):
+        """
+        The y-plot radio buttons have been updated
+        """
         self.ySelected = newid #-2 - newid     # WTF? What's with the index??
         self.updateChoice()
 
@@ -643,10 +681,10 @@ class PlkXYPlotWidget(QtGui.QWidget):
 
 
 
-"""
-The plk-emulator window.
-"""
 class PlkWidget(QtGui.QWidget):
+    """
+    The plk-emulator window.
+    """
 
     def __init__(self, parent=None, **kwargs):
         super(PlkWidget, self).__init__(parent, **kwargs)
@@ -702,21 +740,21 @@ class PlkWidget(QtGui.QWidget):
         self.layoutMode = 1         # (0 = none, 1 = all, 2 = only fitboxes, 3 = fit & action)
 
 
-    """
-    When we don't have a pulsar yet, but we have to display something, just draw
-    an empty figure
-    """
     def drawSomething(self):
+        """
+        When we don't have a pulsar yet, but we have to display something, just draw
+        an empty figure
+        """
         self.plkAxes.clear()
         self.plkAxes.grid(True)
         self.plkAxes.set_xlabel('MJD')
         self.plkAxes.set_ylabel('Residual ($\mu$s)')
         self.plkCanvas.draw()
 
-    """
-    We've got a new pulsar!
-    """
     def setPulsar(self, psr):
+        """
+        We've got a new pulsar!
+        """
         self.psr = psr
 
         # Update the fitting checkboxes
@@ -728,18 +766,18 @@ class PlkWidget(QtGui.QWidget):
         self.xyChoiceWidget.updateChoice()
         self.show()
 
-    """
-    This function is called when we have new fitparameters
-
-    TODO: callback not used right now
-    """
     def newFitParameters(self):
+        """
+        This function is called when we have new fitparameters
+
+        TODO: callback not used right now
+        """
         pass
 
-    """
-    Initialise the basic layout of this plk emulator emulator
-    """
     def initPlkLayout(self):
+        """
+        Initialise the basic layout of this plk emulator emulator
+        """
         # Initialise the plk box
         self.plkbox.addWidget(self.fitboxesWidget)
 
@@ -751,26 +789,26 @@ class PlkWidget(QtGui.QWidget):
         self.plkbox.addWidget(self.actionsWidget)
         self.setLayout(self.plkbox)
 
-    """
-    Show the correct widgets in the plk Window
-    """
     def showVisibleWidgets(self):
+        """
+        Show the correct widgets in the plk Window
+        """
         self.xyChoiceWidget.setVisible(self.xyChoiceVisible)
         self.fitboxesWidget.setVisible(self.fitboxVisible)
         self.actionsWidget.setVisible(self.actionsVisible)
 
 
-    """
-    Update the plot, without having all the information
-    """
     def updatePlot(self):
+        """
+        Update the plot, without having all the information
+        """
         if not self.psr is None:
             self.updatePlotL(*self.xyChoiceWidget.getPlot())
 
-    """
-    Update the plot, given all the plotting info
-    """
     def updatePlotL(self, x, y, yerr, xlabel, ylabel, title):
+        """
+        Update the plot, given all the plotting info
+        """
         self.plkAxes.clear()
         self.plkAxes.grid(True)
 
@@ -795,10 +833,10 @@ class PlkWidget(QtGui.QWidget):
         self.plkCanvas.draw()
 
 
-    """
-    A key is pressed. Handle all the shortcuts here
-    """
     def keyPressEvent(self, event):
+        """
+        A key is pressed. Handle all the shortcuts here
+        """
 
         key = event.key()
         modifiers = int(event.modifiers())

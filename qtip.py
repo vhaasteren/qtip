@@ -154,7 +154,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.createOpenSomethingWidget()
 
         self.initQtipLayout()
-        self.setQtipLayout(whichWidget='opensomething', showIPython=False)
+        self.setQtipLayout(whichWidget='opensomething', showIPython=True)
 
         # We are still in MAJOR testing mode, so open a test-pulsar right away
         # (delete this line when going into production)
@@ -293,7 +293,7 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Initialise the Qtip layout
         """
-        self.mainFrame.setMinimumSize(650, 550)
+        self.mainFrame.setMinimumSize(1350, 550)
         self.hbox.addWidget(self.openSomethingWidget)
         self.hbox.addWidget(self.plkWidget)
         self.hbox.addStretch(1)

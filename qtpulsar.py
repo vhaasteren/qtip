@@ -32,6 +32,9 @@ import time
 import tempfile
 from constants import *
 
+# For date conversions
+import jdcal        # pip install jdcal
+
 # Import libstempo and Piccard
 try:
     import piccard as pic
@@ -205,6 +208,7 @@ class APulsar(object):
         """ Observing frequencies """
         return self._psr.freqsSSB
 
+    @property
     def residuals(self, updatebats=True, formresiduals=True):
         return self._psr.residuals(updatebats, formresiduals)
 
@@ -229,5 +233,4 @@ class APulsar(object):
 
     def savetim(self, timfile):
         self._psr(timfile)
-
 
