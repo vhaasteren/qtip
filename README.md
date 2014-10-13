@@ -14,6 +14,9 @@ construction, but it will be compatible with:
 It works with an embedded IPython kernel. That's where all the calculations are
 performed.
 
+At the moment, only basic functions, like residual plotting, and re-fitting are
+implemented.
+
 Requirements:
 =============
 
@@ -24,7 +27,10 @@ Requirements:
  * [libstempo](https://github.com/vallis/mc3pta/tree/master/stempo)
  * PyQt
  * Qt
- * IPython >= 1.0
+ * IPython >= 1.1
+ * pygments
+ * pyzmq
+ * jdcal
 
 Contact
 =======

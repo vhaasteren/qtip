@@ -1,0 +1,9 @@
+numpy
+Cython>=0.18
+libstempo
+scipy
+matplotlib
+ipython>=1.1
+pygments
+pyzmq>=2.1.11
+jdcal

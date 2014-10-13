@@ -246,7 +246,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Load the necessary packages in the embedded kernel
         cell = "import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp"
-        self.kernel.shell.run_cell(cell)
+        self.kernel.shell.run_cell(cell, store_history=False)
 
     def createIPythonWidget(self):
         """
@@ -258,7 +258,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.consoleWidget.kernel_manager = self.kernelManager
         self.consoleWidget.kernel_client = self.kernelClient
         self.consoleWidget.exit_requested.connect(self.toggleIPython)
-        #self.consoleWidget.set_default_style(colors='linux')
+        self.consoleWidget.set_default_style(colors='linux')
         self.consoleWidget.hide()
 
 

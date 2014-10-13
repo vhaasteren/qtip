@@ -39,7 +39,7 @@ import jdcal        # pip install jdcal
 try:
     import piccard as pic
 except ImportError:
-    pic is None
+    pic = None
 
 try:
     import libstempo as lt
