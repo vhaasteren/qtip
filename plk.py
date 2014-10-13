@@ -156,7 +156,7 @@ import jdcal        # pip install jdcal
 
 
 # Design philosophy: All communication about the pulsar data is done through the
-# APulsar object, which is shared. This is a much more pragmatic solution than
+# XPulsar object, which is shared. This is a much more pragmatic solution than
 # implementing signals for all the functions.
 
 class PlkActionsWidget(QtGui.QWidget):
@@ -257,7 +257,7 @@ class PlkFitboxesWidget(QtGui.QWidget):
         """
         We've got a new pulsar
 
-        @param psr:     The new APulsar psr object
+        @param psr:     The new XPulsar psr object
         """
         self.psr = psr
         self.deleteFitCheckBoxes()
@@ -529,7 +529,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
             x = self.psr.toaerrs
         elif label == 'elevation':
             print("WARNING: parameter {0} not yet implemented".format(label))
-            # Need to have observatory implemented in APulsar
+            # Need to have observatory implemented in XPulsar
             """
                 observatory *obs;
                 double source_elevation;

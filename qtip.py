@@ -434,14 +434,14 @@ class QtipWindow(QtGui.QMainWindow):
 
                 # Load the pulsar
                 # cell = "psr = t2.tempopulsar('"+parfilename+"', '"+timfilename+"')"
-                cell = "psr = qp.APulsar('"+parfilename+"', '"+timfilename+"')"
+                cell = "psr = qp.LTPulsar('"+parfilename+"', '"+timfilename+"')"
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']
 
                 # Change directory back to where we were
                 os.chdir(savedir)
             else:
-                cell = "psr = qp.APulsar(testpulsar=True)"
+                cell = "psr = qp.LTPulsar(testpulsar=True)"
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']
 
