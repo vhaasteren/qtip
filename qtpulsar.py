@@ -86,9 +86,25 @@ def get_engine(trypint=True):
     else:
         raise NotImplemented("Other pulsars not yet implemented")
 
+class BasePulsar(object):
+    """
+    Base pulsar class, containing methods that do not depend on the pulsar
+    timing engine.
+    """
+
+    def __init__(self):
+        self.isolated = ['pre-fit', 'post-fit', 'date', 'sidereal', \
+            'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
+            'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
+        self.binary = ['orbital phase']
+
+        # Plotquantities = isolated + binary
+        self.plotquantities = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'sidereal', \
+            'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
+            'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
 
 
-class LTPulsar(object):
+class LTPulsar(BasePulsar):
     """
     Abstract pulsar class. For now only uses libstempo, but functionality will
     be delegated to derived classes when implementing
@@ -276,7 +292,7 @@ class LTPulsar(object):
 
 
 
-class PPulsar(object):
+class PPulsar(BasePulsar):
     """
     Abstract pulsar class. For now only uses PINT
     """
