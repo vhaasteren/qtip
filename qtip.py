@@ -453,7 +453,6 @@ class QtipWindow(QtGui.QMainWindow):
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']
         elif engine == 'pint':
-            psr = qp.PPulsar(testpulsar=True)
             cell = "psr = qp."+pclass+"(testpulsar=True)"
             self.kernel.shell.run_cell(cell)
             psr = self.kernel.shell.ns_table['user_local']['psr']
