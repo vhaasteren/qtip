@@ -18,20 +18,16 @@ from IPython.lib import guisupport
 
 from PyQt4 import QtGui, QtCore
 
-# Importing all the stuff for the matplotlib widget
-import matplotlib
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
-from matplotlib.figure import Figure
-
 # Advanced command-line option parsing
 from optparse import OptionParser
 
 # Numpy etc.
 import numpy as np
 import time
+import matplotlib
 
 import qtpulsar as qp
+import constants
 
 # Import libstempo and Piccard
 #try:
@@ -153,6 +149,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.createIPythonWidget()
         self.createOpenSomethingWidget()
 
+        # Position the widgets
         self.initQtipLayout()
         self.setQtipLayout(whichWidget='opensomething', showIPython=True)
 
@@ -247,6 +244,11 @@ class QtipWindow(QtGui.QMainWindow):
         # Load the necessary packages in the embedded kernel
         cell = "import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp"
         self.kernel.shell.run_cell(cell, store_history=False)
+
+        # Set the in-kernel matplotlib color scheme to black.
+        self.setMplColorScheme('black')     # Outside as well (do we need this?)
+        self.kernel.shell.run_cell(constants.matplotlib_rc_cell_black,
+                store_history=False)
 
     def createIPythonWidget(self):
         """
@@ -392,6 +394,32 @@ class QtipWindow(QtGui.QMainWindow):
         self.openPulsar(parfilename, timfilename, engine=engine, \
                 testpulsar=testpulsar)
 
+    def setMplColorScheme(self, scheme):
+        """
+        Set the matplotlib color scheme
+
+        @param scheme:  'black'/'white', the color scheme
+        """
+
+        # Obtain the Widget background color
+        color = self.palette().color(QtGui.QPalette.Window)
+        r, g, b = color.red(), color.green(), color.blue()
+        rgbcolor = (r/255.0, g/255.0, b/255.0)
+
+        if scheme == 'white':
+            rcP = constants.mpl_rcParams_white
+
+            rcP['axes.facecolor'] = rgbcolor
+            rcP['figure.facecolor'] = rgbcolor
+            rcP['figure.edgecolor'] = rgbcolor
+            rcP['savefig.facecolor'] = rgbcolor
+            rcP['savefig.edgecolor'] = rgbcolor
+        elif scheme == 'black':
+            rcP = constants.mpl_rcParams_black
+
+        for key, value in rcP.iteritems():
+            matplotlib.rcParams[key] = value
+
 
     def openParTim(self, filename=None, engine='libstempo'):
         """
@@ -441,7 +469,6 @@ class QtipWindow(QtGui.QMainWindow):
                 os.chdir(dirname)
 
                 # Load the pulsar
-                # cell = "psr = t2.tempopulsar('"+parfilename+"', '"+timfilename+"')"
                 cell = "psr = qp."+pclass+"('"+parfilename+"', '"+timfilename+"')"
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']

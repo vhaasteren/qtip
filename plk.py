@@ -150,9 +150,12 @@ from matplotlib.figure import Figure
 # Numpy etc.
 import numpy as np
 import time
+import copy
 
 # For date conversions
 import jdcal        # pip install jdcal
+
+import constants
 
 
 # Design philosophy: All communication about the pulsar data is done through the
@@ -546,52 +549,52 @@ class PlkXYPlotWidget(QtGui.QWidget):
         elif label == 'sidereal time':
             print("WARNING: parameter {0} not yet implemented".format(label))
             """
-   else if (plot==13 || plot==14 || plot==15) 
-	  /* 13 = Sidereal time, 14 = hour angle, 15 = parallactic angle */
-   {
-	  double tsid,sdd,erad,hlt,alng,hrd;
-	  double toblq,oblq,pc,ph;
-	  double siteCoord[3],ha;
-	  observatory *obs;
-	  //      printf("In here\n");
-	  obs = getObservatory(psr[0].obsn[iobs].telID);
-	  erad = sqrt(obs->x*obs->x+obs->y*obs->y+obs->z*obs->z);//height(m)
-	  hlt  = asin(obs->z/erad); // latitude
-	  alng = atan2(-obs->y,obs->x); // longitude
-	  hrd  = erad/(2.99792458e8*499.004786); // height (AU)
-	  siteCoord[0] = hrd * cos(hlt) * 499.004786; // dist from axis (lt-sec)
-	  siteCoord[1] = siteCoord[0]*tan(hlt); // z (lt-sec)
-	  siteCoord[2] = alng; // longitude
+           else if (plot==13 || plot==14 || plot==15) 
+              /* 13 = Sidereal time, 14 = hour angle, 15 = parallactic angle */
+           {
+              double tsid,sdd,erad,hlt,alng,hrd;
+              double toblq,oblq,pc,ph;
+              double siteCoord[3],ha;
+              observatory *obs;
+              //      printf("In here\n");
+              obs = getObservatory(psr[0].obsn[iobs].telID);
+              erad = sqrt(obs->x*obs->x+obs->y*obs->y+obs->z*obs->z);//height(m)
+              hlt  = asin(obs->z/erad); // latitude
+              alng = atan2(-obs->y,obs->x); // longitude
+              hrd  = erad/(2.99792458e8*499.004786); // height (AU)
+              siteCoord[0] = hrd * cos(hlt) * 499.004786; // dist from axis (lt-sec)
+              siteCoord[1] = siteCoord[0]*tan(hlt); // z (lt-sec)
+              siteCoord[2] = alng; // longitude
 
-	  toblq = (psr[0].obsn[iobs].sat+2400000.5-2451545.0)/36525.0;
-	  oblq = (((1.813e-3*toblq-5.9e-4)*toblq-4.6815e1)*toblq +84381.448)/3600.0;
+              toblq = (psr[0].obsn[iobs].sat+2400000.5-2451545.0)/36525.0;
+              oblq = (((1.813e-3*toblq-5.9e-4)*toblq-4.6815e1)*toblq +84381.448)/3600.0;
 
-	  pc = cos(oblq*M_PI/180.0+psr[0].obsn[iobs].nutations[1])*psr[0].obsn[iobs].nutations[0];
+              pc = cos(oblq*M_PI/180.0+psr[0].obsn[iobs].nutations[1])*psr[0].obsn[iobs].nutations[0];
 
-	  lmst2(psr[0].obsn[iobs].sat+psr[0].obsn[iobs].correctionUT1/SECDAY,0.0,&tsid,&sdd);
-	  tsid*=2.0*M_PI;
-	  /* Compute the local, true sidereal time */
-	  ph = tsid+pc-siteCoord[2];  
-	  ha = (fmod(ph,2*M_PI)-psr[0].param[param_raj].val[0])/M_PI*12;
-	  if (plot==13)
-		 x[count] = (float)fmod(ph/M_PI*12,24.0);
-	  else if (plot==14)
-		 x[count] = (float)(fmod(ha,12));
-	  else if (plot==15)
-	  {
-		 double cp,sqsz,cqsz,pa;
-		 double phi,dec;
-		 phi =  hlt;
-		 dec =  psr[0].param[param_decj].val[0];
-		 cp =   cos(phi);
-		 sqsz = cp*sin(ha*M_PI/12.0);
-		 cqsz = sin(phi)*cos(dec)-cp*sin(dec)*cos(ha*M_PI/12.0);
-		 if (sqsz==0 && cqsz==0) cqsz=1.0;
-		 pa=atan2(sqsz,cqsz);
-		 x[count] = (float)(pa*180.0/M_PI);
-	  }
-	  //      printf("Local sidereal time = %s %g %g %g %g %g\n",psr[0].obsn[iobs].fname,ph,tsid,pc,siteCoord[2],x[count]);
-   }
+              lmst2(psr[0].obsn[iobs].sat+psr[0].obsn[iobs].correctionUT1/SECDAY,0.0,&tsid,&sdd);
+              tsid*=2.0*M_PI;
+              /* Compute the local, true sidereal time */
+              ph = tsid+pc-siteCoord[2];  
+              ha = (fmod(ph,2*M_PI)-psr[0].param[param_raj].val[0])/M_PI*12;
+              if (plot==13)
+                 x[count] = (float)fmod(ph/M_PI*12,24.0);
+              else if (plot==14)
+                 x[count] = (float)(fmod(ha,12));
+              else if (plot==15)
+              {
+                 double cp,sqsz,cqsz,pa;
+                 double phi,dec;
+                 phi =  hlt;
+                 dec =  psr[0].param[param_decj].val[0];
+                 cp =   cos(phi);
+                 sqsz = cp*sin(ha*M_PI/12.0);
+                 cqsz = sin(phi)*cos(dec)-cp*sin(dec)*cos(ha*M_PI/12.0);
+                 if (sqsz==0 && cqsz==0) cqsz=1.0;
+                 pa=atan2(sqsz,cqsz);
+                 x[count] = (float)(pa*180.0/M_PI);
+              }
+              //      printf("Local sidereal time = %s %g %g %g %g %g\n",psr[0].obsn[iobs].fname,ph,tsid,pc,siteCoord[2],x[count]);
+           }
             """
 
         elif label == 'hour angle':
@@ -684,6 +687,8 @@ class PlkXYPlotWidget(QtGui.QWidget):
 class PlkWidget(QtGui.QWidget):
     """
     The plk-emulator window.
+
+    @param parent:      Parent window
     """
 
     def __init__(self, parent=None, **kwargs):
@@ -704,6 +709,9 @@ class PlkWidget(QtGui.QWidget):
         self.fitboxesWidget = PlkFitboxesWidget(parent=self)    # Contains all the checkboxes
         self.actionsWidget = PlkActionsWidget(parent=self)
 
+        # We are creating the Figure here, so set the color scheme appropriately
+        self.setColorScheme(True)
+
         # Create the mpl Figure and FigCanvas objects. 
         # 5x4 inches, 100 dots-per-inch
         #
@@ -718,9 +726,11 @@ class PlkWidget(QtGui.QWidget):
         # work.
         #
         self.plkAxes = self.plkFig.add_subplot(111)
+
+        # Done creating the Figure. Restore color scheme to defaults
+        self.setColorScheme(False)
         
         # Call-back functions for clicking and key-press.
-        # TODO: Why does the key-press not work???
         self.plkCanvas.mpl_connect('button_press_event', self.canvasClickEvent)
         self.plkCanvas.mpl_connect('key_press_event', self.canvasKeyEvent)
 
@@ -740,17 +750,51 @@ class PlkWidget(QtGui.QWidget):
         self.actionsVisible = True
         self.layoutMode = 1         # (0 = none, 1 = all, 2 = only fitboxes, 3 = fit & action)
 
+    def setColorScheme(self, start=True):
+        """
+        Set the color scheme
+
+        @param start:   When true, save the original scheme, and set to white
+                        When False, restore the original scheme
+        """
+        # Obtain the Widget background color
+        color = self.palette().color(QtGui.QPalette.Window)
+        r, g, b = color.red(), color.green(), color.blue()
+        rgbcolor = (r/255.0, g/255.0, b/255.0)
+
+        if start:
+            # Copy of 'white', because of bug in matplotlib that does not allow
+            # deep copies of rcParams. Store values of matplotlib.rcParams
+            self.orig_rcParams = copy.deepcopy(constants.mpl_rcParams_white)
+            for key, value in self.orig_rcParams.iteritems():
+                self.orig_rcParams[key] = matplotlib.rcParams[key]
+
+            rcP = copy.deepcopy(constants.mpl_rcParams_white)
+            rcP['axes.facecolor'] = rgbcolor
+            rcP['figure.facecolor'] = rgbcolor
+            rcP['figure.edgecolor'] = rgbcolor
+            rcP['savefig.facecolor'] = rgbcolor
+            rcP['savefig.edgecolor'] = rgbcolor
+
+            for key, value in rcP.iteritems():
+                matplotlib.rcParams[key] = value
+        else:
+            for key, value in constants.mpl_rcParams_black.iteritems():
+                matplotlib.rcParams[key] = value
+
 
     def drawSomething(self):
         """
         When we don't have a pulsar yet, but we have to display something, just draw
         an empty figure
         """
+        self.setColorScheme(True)
         self.plkAxes.clear()
         self.plkAxes.grid(True)
         self.plkAxes.set_xlabel('MJD')
         self.plkAxes.set_ylabel('Residual ($\mu$s)')
         self.plkCanvas.draw()
+        self.setColorScheme(False)
 
     def setPulsar(self, psr):
         """
@@ -810,6 +854,7 @@ class PlkWidget(QtGui.QWidget):
         """
         Update the plot, given all the plotting info
         """
+        self.setColorScheme(True)
         self.plkAxes.clear()
         self.plkAxes.grid(True)
 
@@ -832,6 +877,7 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.set_ylabel(ylabel)
         self.plkAxes.set_title(title)
         self.plkCanvas.draw()
+        self.setColorScheme(False)
 
     def setFocusToCanvas(self):
         """

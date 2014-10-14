@@ -30,7 +30,7 @@ from matplotlib.figure import Figure
 import numpy as np
 import time
 import tempfile
-from constants import *
+from constants import J1744_parfile, J1744_timfile
 
 # For date conversions
 import jdcal        # pip install jdcal

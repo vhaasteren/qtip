@@ -6,6 +6,91 @@ constants: Some constants, and testing data
 
 """
 
+# Do it like this: dict(list(r.items()) + list(s.items()))
+mpl_rcParams_white = dict({
+    'lines.color': 'black',
+    'patch.edgecolor': 'blue',
+    'text.color': 'black',
+    'axes.facecolor': 'white',
+    'axes.edgecolor': 'black',
+    'axes.labelcolor': 'black',
+    'axes.color_cycle': ['b', 'g', 'r', 'c', 'm', 'y', 'k'],
+    'xtick.color': 'black',
+    'ytick.color': 'black',
+    'grid.color': 'black',
+    'figure.facecolor': 'white',
+    'figure.edgecolor': 'white',
+    'savefig.facecolor': 'white',
+    'savefig.edgecolor': 'white'})
+mpl_rcParams_black = dict({
+    'lines.color': 'white',
+    'patch.edgecolor': 'yellow',
+    'text.color': 'white',
+    'axes.facecolor': 'black',
+    'axes.edgecolor': 'white',
+    'axes.labelcolor': 'white',
+    'axes.color_cycle': ['y', 'm', 'c', 'r', 'g', 'b', 'w'],
+    'xtick.color': 'white',
+    'ytick.color': 'white',
+    'grid.color': 'white',
+    'figure.facecolor': 'black',
+    'figure.edgecolor': 'black',
+    'savefig.facecolor': 'black',
+    'savefig.edgecolor': 'black'})
+
+matplotlib_rc_cell_white = """
+import matplotlib as mpl
+
+mpl.rcParams['lines.color'] = 'black'
+mpl.rcParams['patch.edgecolor'] = 'blue'
+
+mpl.rcParams['text.color'] = 'black'
+
+mpl.rcParams['axes.facecolor'] = 'white'
+mpl.rcParams['axes.edgecolor'] = 'black'
+mpl.rcParams['axes.labelcolor'] = 'black'
+mpl.rcParams['axes.color_cycle'] = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+
+mpl.rcParams['xtick.color'] = 'black'
+mpl.rcParams['ytick.color'] = 'black'
+
+mpl.rcParams['grid.color'] = 'black'
+
+mpl.rcParams['figure.facecolor'] = 'white'
+mpl.rcParams['figure.edgecolor'] = 'white'
+
+mpl.rcParams['savefig.facecolor'] = 'white'
+mpl.rcParams['savefig.edgecolor'] = 'white'
+"""
+
+
+matplotlib_rc_cell_black = """
+import matplotlib as mpl
+
+mpl.rcParams['lines.color'] = 'white'
+mpl.rcParams['patch.edgecolor'] = 'yellow'
+
+mpl.rcParams['text.color'] = 'white'
+
+mpl.rcParams['axes.facecolor'] = 'black'
+mpl.rcParams['axes.edgecolor'] = 'white'
+mpl.rcParams['axes.labelcolor'] = 'white'
+mpl.rcParams['axes.color_cycle'] = 
+
+mpl.rcParams['xtick.color'] = 'white'
+mpl.rcParams['ytick.color'] = 'white'
+
+mpl.rcParams['grid.color'] = 'white'
+
+mpl.rcParams['figure.facecolor'] = 'black'
+mpl.rcParams['figure.edgecolor'] = 'black'
+
+mpl.rcParams['savefig.facecolor'] = 'black'
+mpl.rcParams['savefig.edgecolor'] = 'black'
+"""
+
+
+
 J1744_parfile = """
 PSR              1744-1134   
 RAJ      17:44:29.39171911  0          0.00002312
