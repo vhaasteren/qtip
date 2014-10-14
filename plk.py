@@ -719,9 +719,10 @@ class PlkWidget(QtGui.QWidget):
         #
         self.plkAxes = self.plkFig.add_subplot(111)
         
-        # Bind the 'pick' event for clicking on one of the bars
-        #
-        #self.canvas.mpl_connect('pick_event', self.on_pick)
+        # Call-back functions for clicking and key-press.
+        # TODO: Why does the key-press not work???
+        self.plkCanvas.mpl_connect('button_press_event', self.canvasClickEvent)
+        self.plkCanvas.mpl_connect('key_press_event', self.canvasKeyEvent)
 
         # Create the navigation toolbar, tied to the canvas
         #
@@ -832,23 +833,50 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.set_title(title)
         self.plkCanvas.draw()
 
-
-    def keyPressEvent(self, event):
+    def setFocusToCanvas(self):
         """
-        A key is pressed. Handle all the shortcuts here
+        Set the focus to the plk Canvas
+        """
+        self.plkCanvas.setFocus()
+
+
+    def keyPressEvent(self, event, **kwargs):
+        """
+        A key is pressed. Handle all the shortcuts here.
+
+        This function can be called as a callback from the Canvas, or as a
+        callback from Qt. So first some parsing must be done
         """
 
-        key = event.key()
-        modifiers = int(event.modifiers())
+        if hasattr(event.key, '__call__'):
+            ukey = event.key()
+            modifiers = int(event.modifiers())
+            from_canvas = False
+        else:
+            # Modifiers are noted as: key = 'ctrl+alt+F', or 'alt+control', or
+            # 'shift+g'. Do some parsing
+            fkey = event.key
+            from_canvas = True
+
+            ukey = ord(fkey[-1])
+            modifiers = QtCore.Qt.NoModifier
+            if 'ctrl' in fkey:
+                modifiers += QtCore.Qt.ControlModifier
+            if 'shift' in fkey:
+                modifiers += QtCore.Qt.ShiftModifier
+            if 'alt' in fkey:
+                modifiers += QtCore.Qt.ShiftModifier
+            if 'meta' in fkey:
+                modifiers += QtCore.Qt.MetaModifier
 
         #if int(e.modifiers()) == (QtCore.Qt.ControlModifier+QtCore.Qt.AltModifier)
 
-        if key == QtCore.Qt.Key_Escape:
+        if ukey == QtCore.Qt.Key_Escape:
             if self.parent is None:
                 self.close()
             else:
                 self.parent.close()
-        elif (key == ord('M') or key == ord('m')) and \
+        elif (ukey == ord('M') or ukey == ord('m')) and \
                 modifiers == QtCore.Qt.ControlModifier:
             # Change the window
             self.layoutMode = (1+self.layoutMode)%4
@@ -870,10 +898,37 @@ class PlkWidget(QtGui.QWidget):
                 self.actionsVisible = False
             self.showVisibleWidgets()
 
-        elif key == QtCore.Qt.Key_Left:
+        elif ukey == QtCore.Qt.Key_Left:
             # print("Left pressed")
             pass
         else:
-            #print("Other key: {0} {1} {2} {3}".format(key,
+            #print("Other key: {0} {1} {2} {3}".format(ukey,
             #    modifiers, ord('M'), QtCore.Qt.ControlModifier))
             pass
+
+        print("PlkWidget: key press")
+
+        if not from_canvas:
+            if self.parent is not None:
+                print("Propagating key press")
+                self.parent.keyPressEvent(event)
+
+            super(PlkWidget, self).keyPressEvent(event, **kwargs)
+
+    def canvasClickEvent(self, event):
+        """
+        When one clicks on the Figure/Canvas, this function is called. The
+        coordinates of the click are stored in event.xdata, event.ydata
+        """
+        print('Canvas click, you pressed', event.button, event.xdata, event.ydata)
+
+    def canvasKeyEvent(self, event):
+        """
+        When one presses a button on the Figure/Canvas, this function is called.
+        The coordinates of the click are stored in event.xdata, event.ydata
+        """
+        print('Canvas press, you pressed', event.key, event.xdata, event.ydata)
+
+        # Callback to the plkWidget
+        self.keyPressEvent(event)
+

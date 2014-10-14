@@ -343,7 +343,8 @@ class QtipWindow(QtGui.QMainWindow):
             self.mainFrame.setMinimumSize(650, 550)
 
         if self.whichWidget.lower() == 'plk' and not self.showIPython:
-            self.plkWidget.setFocus()
+            #self.plkWidget.setFocus()
+            self.plkWidget.setFocusToCanvas()
         #elif self.showIPython:
         #    self.consoleWidget.setFocus()
 
@@ -467,7 +468,7 @@ class QtipWindow(QtGui.QMainWindow):
         # print("Embedded, we have:", self.kernel.shell.ns_table['user_local']['foo'])
 
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event, **kwargs):
         """
         Handle a key-press event
 
@@ -482,6 +483,18 @@ class QtipWindow(QtGui.QMainWindow):
             print("Left pressed")
         else:
             print("Other key")
+
+        print("QtipWindow: key press")
+        super(QtipWindow, self).keyPressEvent(event, **kwargs)
+
+    def mousePressEvent(self, event, **kwargs):
+        """
+        Handle a mouse-click event
+
+        @param event:   event that is handled here
+        """
+        print("QtipWindow: mouse click")
+        super(QtipWindow, self).mousePressEvent(event, **kwargs)
 
         
 def main():
