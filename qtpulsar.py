@@ -285,15 +285,15 @@ class BasePulsar(object):
 
         if label == 'pre-fit':
             data = self.prefitresiduals * 1e6
-            error = self.toaerr * 1e6
+            error = self.toaerrs
             plotlabel = r"Pre-fit residual ($\mu$s)"
         elif label == 'post-fit':
             data = self.residuals * 1e6
-            error = self.toaerr * 1e6
+            error = self.toaerrs
             plotlabel = r"Post-fit residual ($\mu$s)"
         elif label == 'date':
             data = self.toas
-            error = self.toaerr * 1e6
+            error = self.toaerrs * 1e-6
             plotlabel = r'MJD'
         elif label == 'orbital phase':
             data = self.orbitalphase
