@@ -172,6 +172,7 @@ import qtpulsar as qp
 # Drawing is done through PlkWidget. There is a callback function 'updatePlot'
 # that all child widgets are allowed to call, but they should not get access to
 # any further data.
+# TODO: remove dependence on psr object in child widgets
 
 class PlkActionsWidget(QtGui.QWidget):
     """
@@ -586,7 +587,6 @@ class PlkWidget(QtGui.QWidget):
 
         # Update the fitting checkboxes
         self.fitboxesWidget.setPulsar(psr)
-        #self.xyChoiceWidget.setPulsar(psr, self.updatePlotL)
         self.xyChoiceWidget.setPulsar(psr, self.updatePlot)
         self.actionsWidget.setPulsar(psr, self.updatePlot)
 
@@ -650,7 +650,7 @@ class PlkWidget(QtGui.QWidget):
                 else:
                     yerrp = None
 
-                self.updatePlotL(xp, yp, yerrp, xlabel, ylabel, None)
+                self.updatePlotL(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
             else:
                 raise ValueError("Nothing to plot!")
 

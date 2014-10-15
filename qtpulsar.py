@@ -35,6 +35,11 @@ from constants import J1744_parfile, J1744_timfile
 # For date conversions
 import jdcal        # pip install jdcal
 
+try:
+    from collections import OrderedDict
+except ImportError:
+    from ordereddict import OrderedDict
+
 # Import libstempo and Piccard
 try:
     import piccard as pic
@@ -86,6 +91,60 @@ def get_engine(trypint=True):
     else:
         raise NotImplemented("Other pulsars not yet implemented")
 
+class tempopar:
+    """
+    Similar to the parameter class defined in libstempo, this class gives a nice
+    interface to the timing model parameters
+    """
+    def __init__(self, name, *args, **kwargs):
+
+        if name == 'START' or name == 'FINISH':
+            # Do something else here?
+            self.name = name
+            self._set = True
+            self._fit = False
+            self._val = 0.0
+            self._err = 0.0
+        else:
+            self.name = name
+            self._set = True
+            self._fit = False
+            self._val = 0.0
+            self._err = 0.0
+
+    @property
+    def val(self):
+        return self._val
+
+    @val.setter
+    def val(self, value):
+        self._val = value
+
+    @property
+    def err(self):
+        return self._err
+
+    @err.setter
+    def err(self, value):
+        self._err = value
+
+    @property
+    def fit(self):
+        return self._fit
+
+    @fit.setter
+    def fit(self, value):
+        self._fit = value
+
+    @property
+    def set(self):
+        return self._set
+
+    @set.setter
+    def set(self, value):
+        self.set = value
+
+
 class BasePulsar(object):
     """
     Base pulsar class, containing methods that do not depend on the pulsar
@@ -99,7 +158,7 @@ class BasePulsar(object):
         self.binary = ['orbital phase']
 
         # Plot labels = isolated + binary
-        self.plot_labels = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'sidereal', \
+        self.plot_labels = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'serial', \
             'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
 
@@ -346,18 +405,24 @@ class BasePulsar(object):
         msk = np.ones(len(self.toas), dtype=np.bool)
         if mtype=='range':
             msk = np.ones(len(self.toas), dtype=np.bool)
-            msk[self.toas < self['START'].val] = False
-            msk[self.toas > self['FINISH'].val] = False
+            if self['START'].set and self['START'].fit:
+                msk[self.toas < self['START'].val] = False
+            if self['FINISH'].set and self['FINISH'].fit:
+                msk[self.toas > self['FINISH'].val] = False
         elif mtype=='deleted':
             msk = self.deleted
         elif mtype=='noplot':
             msk = self.deleted
-            msk[self.toas < self['START'].val] = True
-            msk[self.toas > self['FINISH'].val] = True
+            if self['START'].set and self['START'].fit:
+                msk[self.toas < self['START'].val] = True
+            if self['FINISH'].set and self['FINISH'].fit:
+                msk[self.toas > self['FINISH'].val] = True
         elif mtype=='plot':
             msk = np.logical_not(self.deleted)
-            msk[self.toas < self['START'].val] = False
-            msk[self.toas > self['FINISH'].val] = False
+            if self['START'].set and self['START'].fit:
+                msk[self.toas < self['START'].val] = False
+            if self['FINISH'].set and self['FINISH'].fit:
+                msk[self.toas > self['FINISH'].val] = False
 
         return msk
 
@@ -622,6 +687,17 @@ class PPulsar(BasePulsar):
         self._resids_us = resids / float(m.F0.value) * 1e6
         sys.stderr.write("RMS PINT residuals are %.3f us\n" % self._resids_us.std())
 
+        # Create a dictionary of the fitting parameters
+        self.pardict = OrderedDict()
+        self.pardict['START'] = tempopar('START')
+        self.pardict['FINISH'] = tempopar('FINISH')
+        self.pardict['RAJ'] = tempopar('RAJ')
+        self.pardict['DECJ'] = tempopar('DECJ')
+        self.pardict['PMRA'] = tempopar('PMRA')
+        self.pardict['PMDEC'] = tempopar('PMDEC')
+        self.pardict['F0'] = tempopar('F0')
+        self.pardict['F1'] = tempopar('F1')
+
 
         if testpulsar:
             os.remove(parfilename)
@@ -635,11 +711,11 @@ class PPulsar(BasePulsar):
 
     def __getitem__(self, key):
         #return self._psr[key]
-        return 0.0
+        return self.pardict[key]
 
     def __contains__(self, key):
         #return key in self._psr
-        return False
+        return key in self.pardict
 
     @property
     def pars(self):
