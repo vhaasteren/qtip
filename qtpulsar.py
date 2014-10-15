@@ -98,10 +98,241 @@ class BasePulsar(object):
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
         self.binary = ['orbital phase']
 
-        # Plotquantities = isolated + binary
-        self.plotquantities = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'sidereal', \
+        # Plot labels = isolated + binary
+        self.plot_labels = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'sidereal', \
             'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
+
+    @property
+    def orbitalphase(self):
+        """
+        For a binary pulsar, calculate the orbital phase. Otherwise return an
+        array of zeros. (Based on the tempo2 plk plugin)
+        """
+        if self['T0'].set:
+            tpb = (self.toas - self['T0'].val) / self['PB'].val
+        elif self['TASC'].set:
+            tpb = (self.toas - self['TASC'].val) / self['PB'].val
+        else:
+            print("ERROR: Neither T0 nor tasc set...")
+            tpb = (self.toas - self['T0'].val) / self['PB'].val
+            
+        if not self['PB'].set:
+            print("WARNING: This is not a binary pulsar")
+            phase = np.zeros(len(self.toas))
+        else:
+            if self['PB'].set:
+                pbdot = self['PB'].val
+                phase = tpb % 1
+
+        return phase
+
+    @property
+    def dayofyear(self):
+        """
+        Calculate the day of the year for all the TOAs of this pulsar
+        """
+        day, jyear = self.dayandyear()
+
+        return day
+
+    @property
+    def year(self):
+        """
+        Calculate the year for all the TOAs of this pulsar
+        """
+        day, jyear = self.dayandyear()
+
+        return jyear
+
+    def dayandyear(self):
+        """
+        Calculate the day of the year, and the year
+        """
+        # Adjusted from plk_plug.C
+        jd = self.toas + 2400000.5
+        ijd = np.round(jd)
+        fjd = (jd + 0.5) - ijd
+
+        b = np.zeros(len(ijd))
+        for ii, eijd in enumerate(ijd):
+            if eijd > 2299160:
+                a = np.floor((eijd-1867216.25)/36524.25)
+                b[ii] = eijd + 1 + a - np.floor(a / 4)
+            else:
+                b[ii] = eijd
+
+        c = b + 1524
+
+        d = np.floor((c - 122.1)/365.25)
+        e = np.floor(365.25*d)
+        g = np.floor((c-e)/30.6001)
+        day = c-e+fjd-np.floor(30.6001*g)
+
+        month = np.zeros(len(g))
+        year = np.zeros(len(g))
+        for ii, eg in enumerate(g):
+            if eg < 13.5:
+                month[ii] = eg - 1
+            else:
+                month[ii] = eg - 13
+
+            if month[ii] > 2.5:
+                year[ii] = d[ii] - 4716
+            else:
+                year[ii] = d[ii] - 4715
+            
+        jyear = np.zeros(len(year))
+        jmonth = np.zeros(len(day))
+        jday = np.zeros(len(day))
+        mjday = np.zeros(len(day))
+        doy = np.zeros(len(day))
+        for ii in range(len(year)):
+            # Gregorian calendar to Julian calendar
+            # slaCalyd(year, month, (int)day, &retYr, &retDay, &stat);
+            (temp, mjday[ii]) = jdcal.gcal2jd(year[ii], month[ii], day[ii])
+
+            (jyear[ii], jmonth[ii], jday[ii], temp) = jdcal.jd2jcal(*jdcal.gcal2jd(year[ii], month[ii], day[ii]))
+
+            (jyear[ii], jm, jd, temp) = jdcal.jd2jcal(temp, mjday[ii])
+            (temp, doy[ii]) = jdcal.jcal2jd(jyear[ii], 1, 1)
+            doy[ii] += 1
+            
+        # Not ok yet...
+        print("WARNING: jdcal not used well yet...")
+
+        return day, jyear
+
+    @property
+    def elevation(self):
+        # Need to have observatory implemented in XPulsar
+        """
+            observatory *obs;
+            double source_elevation;
+
+            obs = getObservatory(psr[0].obsn[iobs].telID);
+            // get source elevation neglecting proper motion
+            source_elevation = asin(dotproduct(psr[0].obsn[iobs].zenith,
+                   psr[0].posPulsar)
+                / obs->height_grs80);
+            x[count] = source_elevation*180.0/M_PI;
+        """
+        pass
+
+    @property
+    def siderealt(self):
+        pass
+        """
+       else if (plot==13 || plot==14 || plot==15) 
+          /* 13 = Sidereal time, 14 = hour angle, 15 = parallactic angle */
+       {
+          double tsid,sdd,erad,hlt,alng,hrd;
+          double toblq,oblq,pc,ph;
+          double siteCoord[3],ha;
+          observatory *obs;
+          //      printf("In here\n");
+          obs = getObservatory(psr[0].obsn[iobs].telID);
+          erad = sqrt(obs->x*obs->x+obs->y*obs->y+obs->z*obs->z);//height(m)
+          hlt  = asin(obs->z/erad); // latitude
+          alng = atan2(-obs->y,obs->x); // longitude
+          hrd  = erad/(2.99792458e8*499.004786); // height (AU)
+          siteCoord[0] = hrd * cos(hlt) * 499.004786; // dist from axis (lt-sec)
+          siteCoord[1] = siteCoord[0]*tan(hlt); // z (lt-sec)
+          siteCoord[2] = alng; // longitude
+
+          toblq = (psr[0].obsn[iobs].sat+2400000.5-2451545.0)/36525.0;
+          oblq = (((1.813e-3*toblq-5.9e-4)*toblq-4.6815e1)*toblq +84381.448)/3600.0;
+
+          pc = cos(oblq*M_PI/180.0+psr[0].obsn[iobs].nutations[1])*psr[0].obsn[iobs].nutations[0];
+
+          lmst2(psr[0].obsn[iobs].sat+psr[0].obsn[iobs].correctionUT1/SECDAY,0.0,&tsid,&sdd);
+          tsid*=2.0*M_PI;
+          /* Compute the local, true sidereal time */
+          ph = tsid+pc-siteCoord[2];  
+          ha = (fmod(ph,2*M_PI)-psr[0].param[param_raj].val[0])/M_PI*12;
+          if (plot==13)
+             x[count] = (float)fmod(ph/M_PI*12,24.0);
+          else if (plot==14)
+             x[count] = (float)(fmod(ha,12));
+          else if (plot==15)
+          {
+             double cp,sqsz,cqsz,pa;
+             double phi,dec;
+             phi =  hlt;
+             dec =  psr[0].param[param_decj].val[0];
+             cp =   cos(phi);
+             sqsz = cp*sin(ha*M_PI/12.0);
+             cqsz = sin(phi)*cos(dec)-cp*sin(dec)*cos(ha*M_PI/12.0);
+             if (sqsz==0 && cqsz==0) cqsz=1.0;
+             pa=atan2(sqsz,cqsz);
+             x[count] = (float)(pa*180.0/M_PI);
+          }
+          //      printf("Local sidereal time = %s %g %g %g %g %g\n",psr[0].obsn[iobs].fname,ph,tsid,pc,siteCoord[2],x[count]);
+       }
+        """
+        
+
+
+    def data_from_label(self, label):
+        """
+        Given a label, return the data that corresponds to it
+
+        @param label:   The label of which we want to obtain the data
+
+        @return:    data, error, plotlabel
+        """
+        data, error, plotlabel = None, None, None
+
+        if label == 'pre-fit':
+            data = self.prefitresiduals * 1e6
+            error = self.toaerr * 1e6
+            plotlabel = r"Pre-fit residual ($\mu$s)"
+        elif label == 'post-fit':
+            data = self.residuals * 1e6
+            error = self.toaerr * 1e6
+            plotlabel = r"Post-fit residual ($\mu$s)"
+        elif label == 'date':
+            data = self.toas
+            error = self.toaerr * 1e6
+            plotlabel = r'MJD'
+        elif label == 'orbital phase':
+            data = self.orbitalphase
+            error = None
+            plotlabel = 'Orbital Phase'
+        elif label == 'sidereal':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'day of year':
+            data = self.dayofyear
+            error = None
+            plotlabel = 'Day of the year'
+        elif label == 'year':
+            data = self.year
+            error = None
+            plotlabel = 'Year'
+        elif label == 'frequency':
+            data = self.freqs
+            error = None
+            plotlabel = r"Observing frequency (MHz)"
+        elif label == 'TOA error':
+            data = self.toaerrs
+            error = None
+            plotlabel = "TOA uncertainty"
+        elif label == 'elevation':
+            data = np.zeros(len(self.toas))
+            error = None
+            plotlabel = 'Elevation'
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'rounded MJD':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'sidereal time':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'hour angle':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'para. angle':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        
+        return data, error, plotlabel
+
 
 
 class LTPulsar(BasePulsar):
