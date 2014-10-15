@@ -93,7 +93,7 @@ class BasePulsar(object):
     """
 
     def __init__(self):
-        self.isolated = ['pre-fit', 'post-fit', 'date', 'sidereal', \
+        self.isolated = ['pre-fit', 'post-fit', 'date', 'serial', \
             'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
         self.binary = ['orbital phase']
@@ -299,8 +299,10 @@ class BasePulsar(object):
             data = self.orbitalphase
             error = None
             plotlabel = 'Orbital Phase'
-        elif label == 'sidereal':
-            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'serial':
+            data = np.arange(len(self.toas))
+            error = None
+            plotlabel = 'TOA number'
         elif label == 'day of year':
             data = self.dayofyear
             error = None
@@ -333,6 +335,31 @@ class BasePulsar(object):
         
         return data, error, plotlabel
 
+    def mask(self, mtype='plot', flagID=None, flagVal=None):
+        """
+        Returns a mask of TOAs, depending on what is requestion by mtype
+
+        @param mtype:   What kind of mask is requested. (plot, deleted, range)
+        @param flagID:  If set, only give mask for a given flag (+flagVal)
+        @param flagVal: If set, only give mask for a given flag (+flagID)
+        """
+        msk = np.ones(len(self.toas), dtype=np.bool)
+        if mtype=='range':
+            msk = np.ones(len(self.toas), dtype=np.bool)
+            msk[self.toas < self['START'].val] = False
+            msk[self.toas > self['FINISH'].val] = False
+        elif mtype=='deleted':
+            msk = self.deleted
+        elif mtype=='noplot':
+            msk = self.deleted
+            msk[self.toas < self['START'].val] = True
+            msk[self.toas > self['FINISH'].val] = True
+        elif mtype=='plot':
+            msk = np.logical_not(self.deleted)
+            msk[self.toas < self['START'].val] = False
+            msk[self.toas > self['FINISH'].val] = False
+
+        return msk
 
 
 class LTPulsar(BasePulsar):

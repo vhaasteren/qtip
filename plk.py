@@ -156,11 +156,22 @@ import copy
 import jdcal        # pip install jdcal
 
 import constants
+import qtpulsar as qp
 
 
-# Design philosophy: All communication about the pulsar data is done through the
-# XPulsar object, which is shared. This is a much more pragmatic solution than
-# implementing signals for all the functions.
+# Design philosophy:
+# - The pulsar timing engine is dealt with through derivatives of the abstract
+# base class 'BasePulsar'. The object is called psr. Interface is close to that
+# of libstempo, but it has some extra features related to plotting parameters.
+# PlkWidget has psr as a member, but all the child widgets should not (they do
+# know about psr at the moment).
+# The plotting parameters and all that are obtained through the psr object. No
+# calculations whatsoever are supposed to be done in PlkWidget, or it's child
+# widget. They need to know as little as possible, so that they are reusable in
+# other GUI types.
+# Drawing is done through PlkWidget. There is a callback function 'updatePlot'
+# that all child widgets are allowed to call, but they should not get access to
+# any further data.
 
 class PlkActionsWidget(QtGui.QWidget):
     """
@@ -375,9 +386,10 @@ class PlkXYPlotWidget(QtGui.QWidget):
         # Clicking any button in the QButtonGroup will send this signal with the button
         # self.buttonGroup.buttonClicked[QtGui.QAbstractButton].connect(self.setLabel)
         # def setLabel(self, button):
-        self.xychoices = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'sidereal', \
-            'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
-            'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
+
+        # Use an empty base pulsar to obtain the labels
+        psr = qp.BasePulsar()
+        self.xychoices = psr.plot_labels
     
         self.setPlkXYPlotLayout()
 
@@ -420,53 +432,37 @@ class PlkXYPlotWidget(QtGui.QWidget):
 
         self.setLayout(self.grid)
 
-    def setPulsar(self, psr, updatePlotL):
+    def setPulsar(self, psr, updatePlot):
         """
         We've got a new pulsar!
         """
         self.psr = psr
-        self.updatePlotL = updatePlotL
+        self.updatePlot = updatePlot
 
-
-    def getPlot(self):
+    def plotids(self):
         """
-        Assuming we have a pulsar, this function will return the x, y, yerr, and
-        labels for the plot to be made.
+        Return the X,Y ids of the selected quantities
         """
-        x = None
-        y = None
-        yerr = None
-        xlabel = None
-        ylabel = None
-        title = None
-
-        if not self.psr is None and not self.updatePlotL is None:
-            title = self.psr.name
-            xid = self.xychoices[self.xSelected]
-            yid = self.xychoices[self.ySelected]
-            x, xerr, xlabel = self.psr.data_from_label(xid)
-            y, yerr, ylabel = self.psr.data_from_label(yid)
-
-        return (x, y, yerr, xlabel, ylabel, title)
+        return self.xychoices[self.xSelected], self.xychoices[self.ySelected]
 
     def updateXPlot(self, newid):
         """
         The x-plot radio buttons have been updated
         """
-        self.xSelected = newid #-2 - newid     # WTF????
+        self.xSelected = newid
         self.updateChoice()
 
     def updateYPlot(self, newid):
         """
         The y-plot radio buttons have been updated
         """
-        self.ySelected = newid #-2 - newid     # WTF? What's with the index??
+        self.ySelected = newid
         self.updateChoice()
 
     def updateChoice(self):
         # updatePLot was the callback from the main widget
-        if not self.updatePlotL is None:
-            self.updatePlotL(*self.getPlot())
+        if self.updatePlot is not None:
+            self.updatePlot()
 
 
 
@@ -590,7 +586,8 @@ class PlkWidget(QtGui.QWidget):
 
         # Update the fitting checkboxes
         self.fitboxesWidget.setPulsar(psr)
-        self.xyChoiceWidget.setPulsar(psr, self.updatePlotL)
+        #self.xyChoiceWidget.setPulsar(psr, self.updatePlotL)
+        self.xyChoiceWidget.setPulsar(psr, self.updatePlot)
         self.actionsWidget.setPulsar(psr, self.updatePlot)
 
         # Draw the residuals
@@ -631,10 +628,32 @@ class PlkWidget(QtGui.QWidget):
 
     def updatePlot(self):
         """
-        Update the plot, without having all the information
+        Update the plot/figure
         """
-        if not self.psr is None:
-            self.updatePlotL(*self.xyChoiceWidget.getPlot())
+        if self.psr is not None:
+            # Get a mask for the plotting points
+            msk = self.psr.mask('plot')
+
+            # Get the IDs of the X and Y axis
+            xid, yid = self.xyChoiceWidget.plotids()
+
+            # Retrieve the data
+            x, xerr, xlabel = self.psr.data_from_label(xid)
+            y, yerr, ylabel = self.psr.data_from_label(yid)
+
+            if x is not None and y is not None and np.sum(msk) > 0:
+                xp = x[msk]
+                yp = y[msk]
+
+                if yerr is not None:
+                    yerrp = yerr[msk]
+                else:
+                    yerrp = None
+
+                self.updatePlotL(xp, yp, yerrp, xlabel, ylabel, None)
+            else:
+                raise ValueError("Nothing to plot!")
+
 
     def updatePlotL(self, x, y, yerr, xlabel, ylabel, title):
         """
@@ -684,11 +703,17 @@ class PlkWidget(QtGui.QWidget):
             ukey = event.key()
             modifiers = int(event.modifiers())
             from_canvas = False
+
+            print("WARNING: call-back key-press, canvas location not available")
+
+            xpos, ypos = None, None
         else:
             # Modifiers are noted as: key = 'ctrl+alt+F', or 'alt+control', or
             # 'shift+g'. Do some parsing
             fkey = event.key
             from_canvas = True
+
+            xpos, ypos = event.xdata, event.ydata
 
             ukey = ord(fkey[-1])
             modifiers = QtCore.Qt.NoModifier
@@ -729,7 +754,34 @@ class PlkWidget(QtGui.QWidget):
                 self.fitboxVisible = True
                 self.actionsVisible = False
             self.showVisibleWidgets()
-
+        elif ukey == ord('s'):
+            # Set START flag at xpos
+            # TODO: propagate back to the IPython shell
+            self.psr['START'].set = True
+            self.psr['START'].fit = True
+            self.psr['START'].val = xpos
+            self.updatePlot()
+        elif ukey == ord('f'):
+            # Set FINISH flag as xpos
+            # TODO: propagate back to the IPython shell
+            self.psr['FINISH'].set = True
+            self.psr['FINISH'].fit = True
+            self.psr['FINISH'].val = xpos
+            self.updatePlot()
+        elif ukey == ord('u'):
+            # Unzoom
+            # TODO: propagate back to the IPython shell
+            self.psr['START'].set = True
+            self.psr['START'].fit = False
+            self.psr['START'].val = np.min(self.psr.toas)
+            self.psr['FINISH'].set = True
+            self.psr['FINISH'].fit = False
+            self.psr['FINISH'].val = np.max(self.psr.toas)
+            self.updatePlot()
+        elif ukey == ord('d'):
+            # Delete data point
+            # TODO: propagate back to the IPython shell
+            pass
         elif ukey == QtCore.Qt.Key_Left:
             # print("Left pressed")
             pass
@@ -738,7 +790,7 @@ class PlkWidget(QtGui.QWidget):
             #    modifiers, ord('M'), QtCore.Qt.ControlModifier))
             pass
 
-        print("PlkWidget: key press")
+        print("PlkWidget: key press: ", xpos, ypos)
 
         if not from_canvas:
             if self.parent is not None:
@@ -759,8 +811,6 @@ class PlkWidget(QtGui.QWidget):
         When one presses a button on the Figure/Canvas, this function is called.
         The coordinates of the click are stored in event.xdata, event.ydata
         """
-        print('Canvas press, you pressed', event.key, event.xdata, event.ydata)
-
         # Callback to the plkWidget
         self.keyPressEvent(event)
 
