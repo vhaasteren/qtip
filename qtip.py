@@ -151,7 +151,8 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Position the widgets
         self.initQtipLayout()
-        self.setQtipLayout(whichWidget='opensomething', showIPython=True)
+        self.setQtipLayout(whichWidget='opensomething',
+                showIPython=False, firsttime=True)
 
         # We are still in MAJOR testing mode, so open a test-pulsar right away
         # (delete this line when going into production)
@@ -224,7 +225,7 @@ class QtipWindow(QtGui.QMainWindow):
         # What is the status quo of the user interface?
         self.showIPython = False
         self.whichWidget = 'None'
-        self.prevShowIPython = False
+        self.prevShowIPython = None
         self.prevWhichWidget = 'None'
 
     def createIPythonKernel(self):
@@ -255,7 +256,7 @@ class QtipWindow(QtGui.QMainWindow):
         Create the IPython widget
         """
         self.consoleWidget = RichIPythonWidget()
-        self.consoleWidget.setMinimumSize(600, 550)
+        #self.consoleWidget.setMinimumSize(600, 550)
         self.consoleWidget.banner = QtipBanner
         self.consoleWidget.kernel_manager = self.kernelManager
         self.consoleWidget.kernel_client = self.kernelClient
@@ -268,7 +269,6 @@ class QtipWindow(QtGui.QMainWindow):
         #self.kernel.shell.register_post_execute(self.postExecute)
         #
         # In IPython >= 2, we can use the event register
-        #print("shell.events.register", repr(self.kernel.shell.events.register))
         # Events: post_run_cell, pre_run_cell, etc...`
         self.kernel.shell.events.register('pre_execute', self.preExecute)
         self.kernel.shell.events.register('post_execute', self.postExecute)
@@ -298,15 +298,12 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Toggle the IPython widget on or off
         """
-        self.showIPython = not self.showIPython
-
-        self.setQtipLayout()
+        self.setQtipLayout(showIPython = not self.showIPython)
 
     def initQtipLayout(self):
         """
         Initialise the Qtip layout
         """
-        self.mainFrame.setMinimumSize(1350, 550)
         self.hbox.addWidget(self.openSomethingWidget)
         self.hbox.addWidget(self.plkWidget)
         self.hbox.addStretch(1)
@@ -350,10 +347,9 @@ class QtipWindow(QtGui.QMainWindow):
             pass
 
         if self.showIPython:
-            self.mainFrame.setMinimumSize(1300, 550)
             self.consoleWidget.show()
         else:
-            self.mainFrame.setMinimumSize(650, 550)
+            pass
 
         if self.whichWidget.lower() == 'plk' and not self.showIPython:
             #self.plkWidget.setFocus()
@@ -361,7 +357,7 @@ class QtipWindow(QtGui.QMainWindow):
         #elif self.showIPython:
         #    self.consoleWidget.setFocus()
 
-    def setQtipLayout(self, whichWidget=None, showIPython=None):
+    def setQtipLayout(self, whichWidget=None, showIPython=None, firsttime=False):
         """
         Given which widgets to show, display the right widgets and hide the rest
 
@@ -378,10 +374,23 @@ class QtipWindow(QtGui.QMainWindow):
         QtCore.QTimer.singleShot(0, self.showVisibleWidgets)
 
         self.prevWhichWidget = self.whichWidget
-        self.prevShowIPython = self.showIPython
+
+        if self.showIPython != self.prevShowIPython:
+            # IPython has been toggled
+            self.prevShowIPython = self.showIPython
+            if self.showIPython:
+                self.resize(1350, 550)
+                self.mainFrame.resize(1350, 550)
+            else:
+                self.resize(650, 550)
+                self.mainFrame.resize(650, 550)
+
+        if firsttime:
+            # Set position slightly more to the left of the screen, so we can
+            # still open IPython
+            self.move(200, 100)
 
         self.mainFrame.setLayout(self.hbox)
-        #print("whichWidget = {0},  showIPython = {1}".format(self.whichWidget, self.showIPython))
         self.mainFrame.show()
 
 
@@ -517,11 +526,13 @@ class QtipWindow(QtGui.QMainWindow):
         if key == QtCore.Qt.Key_Escape:
             self.close()
         elif key == QtCore.Qt.Key_Left:
-            print("Left pressed")
+            #print("Left pressed")
+            pass
         else:
-            print("Other key")
+            #print("Other key")
+            pass
 
-        print("QtipWindow: key press")
+        #print("QtipWindow: key press")
         super(QtipWindow, self).keyPressEvent(event, **kwargs)
 
     def mousePressEvent(self, event, **kwargs):
@@ -530,7 +541,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         @param event:   event that is handled here
         """
-        print("QtipWindow: mouse click")
+        #print("QtipWindow: mouse click")
         super(QtipWindow, self).mousePressEvent(event, **kwargs)
 
     def preExecute(self):
