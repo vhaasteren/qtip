@@ -550,7 +550,10 @@ class QtipWindow(QtGui.QMainWindow):
         Callback function that is run after execution of a cell (after
         post-execute)
         """
-        pass
+        # TODO: Do more than just update the plot, but also update _all_ the
+        # widgets. Make a callback in plkWidget for that. QtipWindow might also
+        # want to loop over some stuff.
+        self.plkWidget.updatePlot()
 
         
 def main():
