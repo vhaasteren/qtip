@@ -186,6 +186,7 @@ class PlkActionsWidget(QtGui.QWidget):
         self.parent = parent
         self.updatePlot = None
         self.psr = None
+        self.reFit_callback = None
 
         self.hbox = QtGui.QHBoxLayout()     # One horizontal layout
 
@@ -216,17 +217,20 @@ class PlkActionsWidget(QtGui.QWidget):
 
         self.setLayout(self.hbox)
 
-    def setPulsar(self, psr, updatePlot):
+    def setPulsar(self, psr, updatePlot, reFit):
         """
         Memorize the pulsar
         """
         self.psr = psr
         self.updatePlot = updatePlot
+        self.reFit_callback = reFit
 
     def reFit(self):
-        if not self.psr is None:
-            self.psr.fit()
-            self.updatePlot()
+        if self.reFit_callback is not None:
+            self.reFit_callback()
+        #if not self.psr is None:
+        #    self.psr.fit()
+        #    self.updatePlot()
 
     def writePar(self):
         print("Write Par clicked")
@@ -588,11 +592,19 @@ class PlkWidget(QtGui.QWidget):
         # Update the fitting checkboxes
         self.fitboxesWidget.setPulsar(psr)
         self.xyChoiceWidget.setPulsar(psr, self.updatePlot)
-        self.actionsWidget.setPulsar(psr, self.updatePlot)
+        self.actionsWidget.setPulsar(psr, self.updatePlot, self.reFit)
 
         # Draw the residuals
         self.xyChoiceWidget.updateChoice()
         self.show()
+
+    def reFit(self):
+        """
+        We need to re-do the fit for this pulsar
+        """
+        if not self.psr is None:
+            self.psr.fit()
+            self.updatePlot()
 
     def newFitParameters(self):
         """
@@ -633,6 +645,8 @@ class PlkWidget(QtGui.QWidget):
         if self.psr is not None:
             # Get a mask for the plotting points
             msk = self.psr.mask('plot')
+
+            print("Mask has {0} toas".format(np.sum(msk)))
 
             # Get the IDs of the X and Y axis
             xid, yid = self.xyChoiceWidget.plotids()
@@ -820,6 +834,9 @@ class PlkWidget(QtGui.QWidget):
             self.updatePlot()
             #print("Index deleted = ", ind)
             #print("Deleted:", self.psr.deleted[ind])
+        elif ukey == ord('x'):
+            # Re-do the fit, using post-fit values of the parameters
+            self.reFit()
         elif ukey == QtCore.Qt.Key_Left:
             # print("Left pressed")
             pass
