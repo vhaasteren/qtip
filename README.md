@@ -27,7 +27,7 @@ Requirements:
  * [libstempo](https://github.com/vallis/mc3pta/tree/master/stempo)
  * PyQt
  * Qt
- * IPython >= 1.1
+ * IPython >= 2.0
  * pygments
  * pyzmq
  * jdcal

@@ -134,7 +134,7 @@ class QtipWindow(QtGui.QMainWindow):
     libstempo tab, as part of the Piccard suite
     """
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, engine='libstempo', **kwargs):
         super(QtipWindow, self).__init__(parent)
         self.setWindowTitle('QtIpython interface to Piccard/libstempo')
         
@@ -155,7 +155,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         # We are still in MAJOR testing mode, so open a test-pulsar right away
         # (delete this line when going into production)
-        self.requestOpenPlk(testpulsar=True, engine='pint')
+        self.requestOpenPlk(testpulsar=True, engine=engine)
 
         self.show()
 
@@ -266,10 +266,13 @@ class QtipWindow(QtGui.QMainWindow):
         # Register a call-back function for the IPython shell. This one is
         # executed insite the child-kernel.
         #self.kernel.shell.register_post_execute(self.postExecute)
-
-        print("shell:", repr(self.kernel.shell))
-        print("kernel:", repr(self.kernel))
-        #print("shell.register", repr(self.kernel.shell.register))
+        #
+        # In IPython >= 2, we can use the event register
+        #print("shell.events.register", repr(self.kernel.shell.events.register))
+        # Events: post_run_cell, pre_run_cell, etc...`
+        self.kernel.shell.events.register('pre_execute', self.preExecute)
+        self.kernel.shell.events.register('post_execute', self.postExecute)
+        self.kernel.shell.events.register('post_run_cell', self.postRunCell)
 
 
     def createOpenSomethingWidget(self):
@@ -534,18 +537,33 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Callback function that is run prior to execution of a cell
         """
-        print("Pre-execute")
+        pass
 
     def postExecute(self):
         """
-        Callback function that is run after execution of a cell
+        Callback function that is run after execution of a code
         """
-        print("Post-execute")
+        pass
+
+    def postRunCell(self):
+        """
+        Callback function that is run after execution of a cell (after
+        post-execute)
+        """
+        pass
 
         
 def main():
     app = QtGui.QApplication(sys.argv)
-    qtipwin = QtipWindow()
+
+    # See whether we'll use PINT
+    # TODO: use a proper option parser
+    engine = 'libstempo'
+    if len(sys.argv) > 1 and sys.argv[1] == 'pint':
+        engine = 'pint'
+
+    # Create the window, and start the application
+    qtipwin = QtipWindow(engine=engine)
     qtipwin.raise_()        # Required on OSX to move the app to the foreground
     sys.exit(app.exec_())
 

@@ -818,8 +818,8 @@ class PlkWidget(QtGui.QWidget):
             #print("Deleted:", self.psr._psr.deleted)
             self.psr.deleted[ind] = 1
             self.updatePlot()
-            print("Index deleted = ", ind)
-            print("Deleted:", self.psr.deleted[ind])
+            #print("Index deleted = ", ind)
+            #print("Deleted:", self.psr.deleted[ind])
         elif ukey == QtCore.Qt.Key_Left:
             # print("Left pressed")
             pass
@@ -828,7 +828,7 @@ class PlkWidget(QtGui.QWidget):
             #    modifiers, ord('M'), QtCore.Qt.ControlModifier))
             pass
 
-        print("PlkWidget: key press: ", ukey, xpos, ypos)
+        #print("PlkWidget: key press: ", ukey, xpos, ypos)
 
         if not from_canvas:
             if self.parent is not None:
@@ -842,7 +842,8 @@ class PlkWidget(QtGui.QWidget):
         When one clicks on the Figure/Canvas, this function is called. The
         coordinates of the click are stored in event.xdata, event.ydata
         """
-        print('Canvas click, you pressed', event.button, event.xdata, event.ydata)
+        #print('Canvas click, you pressed', event.button, event.xdata, event.ydata)
+        pass
 
     def canvasKeyEvent(self, event):
         """
