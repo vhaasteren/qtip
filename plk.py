@@ -646,7 +646,7 @@ class PlkWidget(QtGui.QWidget):
             # Get a mask for the plotting points
             msk = self.psr.mask('plot')
 
-            print("Mask has {0} toas".format(np.sum(msk)))
+            #print("Mask has {0} toas".format(np.sum(msk)))
 
             # Get the IDs of the X and Y axis
             xid, yid = self.xyChoiceWidget.plotids()
@@ -830,7 +830,10 @@ class PlkWidget(QtGui.QWidget):
             # TODO: Fix libstempo!
             ind = self.coord2point(xpos, ypos)
             #print("Deleted:", self.psr._psr.deleted)
-            self.psr.deleted[ind] = 1
+            # TODO: fix this hack properly in libstempo
+            tempdel = self.psr.deleted
+            tempdel[ind] = True
+            self.psr.deleted = tempdel
             self.updatePlot()
             #print("Index deleted = ", ind)
             #print("Deleted:", self.psr.deleted[ind])

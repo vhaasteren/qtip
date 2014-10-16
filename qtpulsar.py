@@ -410,7 +410,7 @@ class BasePulsar(object):
             if self['FINISH'].set and self['FINISH'].fit:
                 msk[self.toas > self['FINISH'].val] = False
         elif mtype=='deleted':
-            msk = np.array(self.deleted, dtype=np.bool)
+            msk = self.deleted
         elif mtype=='noplot':
             msk = self.deleted
             if self['START'].set and self['START'].fit:
@@ -418,7 +418,7 @@ class BasePulsar(object):
             if self['FINISH'].set and self['FINISH'].fit:
                 msk[self.toas > self['FINISH'].val] = True
         elif mtype=='plot':
-            msk = np.logical_not(np.array(self.deleted, dtype=np.bool))
+            msk = np.logical_not(self.deleted)
             if self['START'].set and self['START'].fit:
                 msk[self.toas < self['START'].val] = False
             if self['FINISH'].set and self['FINISH'].fit:
@@ -599,7 +599,29 @@ class LTPulsar(BasePulsar):
         return self._psr.designmatrix(updatebats, fixunits)
 
     def fit(self, iters=1):
+        """
+        Perform a fit with tempo2
+        """
+        # TODO: Figure out why the START and FINISH parameters get modified, and
+        # then fix this in libstempo?
+        if self['START'].set:
+            start = self['START'].val
+        else:
+            start = None
+
+        if self['FINISH'].set:
+            finish = self['FINISH'].val
+        else:
+            finish = None
+
+        # Perform the fit
         self._psr.fit(iters)
+
+        if start is not None:
+            self['START'].val = start
+
+        if finish is not None:
+            self['FINISH'].val = finish
 
     def chisq(self):
         return self._psr.chisq()
