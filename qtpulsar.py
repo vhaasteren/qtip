@@ -4,7 +4,7 @@
 """
 qtpulsar: An adaptor class for the Qtip interface. This class will handle all
 the timing package interactions. This allows Qtip to work as well with libstempo
-as PINT
+as PINT.
 
 """
 
@@ -410,7 +410,7 @@ class BasePulsar(object):
             if self['FINISH'].set and self['FINISH'].fit:
                 msk[self.toas > self['FINISH'].val] = False
         elif mtype=='deleted':
-            msk = self.deleted
+            msk = np.array(self.deleted, dtype=np.bool)
         elif mtype=='noplot':
             msk = self.deleted
             if self['START'].set and self['START'].fit:
@@ -418,7 +418,7 @@ class BasePulsar(object):
             if self['FINISH'].set and self['FINISH'].fit:
                 msk[self.toas > self['FINISH'].val] = True
         elif mtype=='plot':
-            msk = np.logical_not(self.deleted)
+            msk = np.logical_not(np.array(self.deleted, dtype=np.bool))
             if self['START'].set and self['START'].fit:
                 msk[self.toas < self['START'].val] = False
             if self['FINISH'].set and self['FINISH'].fit:

@@ -690,6 +690,38 @@ class PlkWidget(QtGui.QWidget):
         """
         self.plkCanvas.setFocus()
 
+    def coord2point(self, cx, cy):
+        """
+        Given data coordinates x and y, obtain the index of the observations
+        that is closest to it
+        
+        @param cx:  x-value of the coordinates
+        @param cy:  y-value of the coordinates
+        
+        @return:    Index of observation
+        """
+        ind = None
+
+        if self.psr is not None:
+            # Get a mask for the plotting points
+            msk = self.psr.mask('plot')
+
+            # Get the IDs of the X and Y axis
+            xid, yid = self.xyChoiceWidget.plotids()
+
+            # Retrieve the data
+            x, xerr, xlabel = self.psr.data_from_label(xid)
+            y, yerr, ylabel = self.psr.data_from_label(yid)
+
+            if np.sum(msk) > 0 and x is not None and y is not None:
+                # Obtain the limits
+                xmin, xmax, ymin, ymax = self.plkAxes.axis()
+
+                dist = ((x[msk]-cx)/(xmax-xmin))**2 + ((y[msk]-cy)/(ymax-ymin))**2
+                ind = np.arange(len(x))[msk][np.argmin(dist)]
+
+        return ind
+
 
     def keyPressEvent(self, event, **kwargs):
         """
@@ -781,7 +813,13 @@ class PlkWidget(QtGui.QWidget):
         elif ukey == ord('d'):
             # Delete data point
             # TODO: propagate back to the IPython shell
-            pass
+            # TODO: Fix libstempo!
+            ind = self.coord2point(xpos, ypos)
+            #print("Deleted:", self.psr._psr.deleted)
+            self.psr.deleted[ind] = 1
+            self.updatePlot()
+            print("Index deleted = ", ind)
+            print("Deleted:", self.psr.deleted[ind])
         elif ukey == QtCore.Qt.Key_Left:
             # print("Left pressed")
             pass
@@ -790,7 +828,7 @@ class PlkWidget(QtGui.QWidget):
             #    modifiers, ord('M'), QtCore.Qt.ControlModifier))
             pass
 
-        print("PlkWidget: key press: ", xpos, ypos)
+        print("PlkWidget: key press: ", ukey, xpos, ypos)
 
         if not from_canvas:
             if self.parent is not None:

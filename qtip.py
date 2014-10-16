@@ -263,6 +263,14 @@ class QtipWindow(QtGui.QMainWindow):
         self.consoleWidget.set_default_style(colors='linux')
         self.consoleWidget.hide()
 
+        # Register a call-back function for the IPython shell. This one is
+        # executed insite the child-kernel.
+        #self.kernel.shell.register_post_execute(self.postExecute)
+
+        print("shell:", repr(self.kernel.shell))
+        print("kernel:", repr(self.kernel))
+        #print("shell.register", repr(self.kernel.shell.register))
+
 
     def createOpenSomethingWidget(self):
         """
@@ -521,6 +529,18 @@ class QtipWindow(QtGui.QMainWindow):
         """
         print("QtipWindow: mouse click")
         super(QtipWindow, self).mousePressEvent(event, **kwargs)
+
+    def preExecute(self):
+        """
+        Callback function that is run prior to execution of a cell
+        """
+        print("Pre-execute")
+
+    def postExecute(self):
+        """
+        Callback function that is run after execution of a cell
+        """
+        print("Post-execute")
 
         
 def main():
