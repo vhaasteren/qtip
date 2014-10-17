@@ -1,6 +1,11 @@
 qtip
 ====
 
+Project website: http://vhaasteren.github.io/qtip
+
+Description
+===========
+
 Qt Interface for Pulsar timing
 
 This is a graphical interface for Pulsar Timing packages. It is currently under
