@@ -19,7 +19,7 @@ from IPython.lib import guisupport
 from PyQt4 import QtGui, QtCore
 
 # Advanced command-line option parsing
-from optparse import OptionParser
+import optparse
 
 # Numpy etc.
 import numpy as np
@@ -28,17 +28,6 @@ import matplotlib
 
 import qtpulsar as qp
 import constants
-
-# Import libstempo and Piccard
-#try:
-#    import piccard as pic
-#except ImportError:
-#    pic is None
-
-#try:
-#    import libstempo as t2
-#except ImportError:
-#    t2 = None
 
 from plk import *
 
@@ -55,24 +44,6 @@ object?   -> Details about 'object', use 'object??' for extra details.
 
 import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp
 """
-
-
-# Parse the command-line options
-parser = OptionParser()
-
-# Add some options with add_option
-#parser.add_option("-d", "--dataOnly",
-#                  action="store_true", dest="dataOnly", default=False,
-#                  help="Just include the data in h5 file [default false]") 
-
-(options, args) = parser.parse_args()
-
-if len(args) >= 2:
-    partile = args[0]
-    timfile = args[1]
-else:
-    parfile = None
-    timfile = None
 
 
 class PiccardWidget(QtGui.QWidget):
@@ -134,7 +105,8 @@ class QtipWindow(QtGui.QMainWindow):
     libstempo tab, as part of the Piccard suite
     """
     
-    def __init__(self, parent=None, engine='libstempo', **kwargs):
+    def __init__(self, parent=None, engine='libstempo', \
+            parfile=None, timfile=None, **kwargs):
         super(QtipWindow, self).__init__(parent)
         self.setWindowTitle('QtIpython interface to Piccard/libstempo')
         
@@ -156,7 +128,13 @@ class QtipWindow(QtGui.QMainWindow):
 
         # We are still in MAJOR testing mode, so open a test-pulsar right away
         # (delete this line when going into production)
-        self.requestOpenPlk(testpulsar=True, engine=engine)
+        if parfile is None or timfile is None:
+            testpulsar = True
+        else:
+            testpulsar = False
+
+        self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
+                timfilename=timfile, engine=engine)
 
         self.show()
 
@@ -489,7 +467,7 @@ class QtipWindow(QtGui.QMainWindow):
                 os.chdir(dirname)
 
                 # Load the pulsar
-                cell = "psr = qp."+pclass+"('"+parfilename+"', '"+timfilename+"')"
+                cell = "psr = qp."+pclass+"('"+relparfile+"', '"+reltimfile+"')"
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']
 
@@ -565,21 +543,31 @@ class QtipWindow(QtGui.QMainWindow):
         # widgets. Make a callback in plkWidget for that. QtipWindow might also
         # want to loop over some stuff.
         self.plkWidget.updatePlot()
-
         
 def main():
+    # The option parser
+    usage = "usage: %prog [options]"
+    parser = optparse.OptionParser(usage=usage)
+
+    parser.add_option('-f', '--file', action='store', type='string', nargs=2, \
+            default=(None, None), help="Provide a parfile and a timfile")
+
+    parser.add_option('-e', '--engine', action='store', type='string', nargs=1, \
+            default='libstempo', \
+            help="Pulsar timing engine: libstempo/pint/piccard")
+
+    (options, args) = parser.parse_args()
+
+    # Create the application
     app = QtGui.QApplication(sys.argv)
 
-    # See whether we'll use PINT
-    # TODO: use a proper option parser
-    engine = 'libstempo'
-    if len(sys.argv) > 1 and sys.argv[1] == 'pint':
-        engine = 'pint'
-
     # Create the window, and start the application
-    qtipwin = QtipWindow(engine=engine)
+    qtipwin = QtipWindow(engine=options.engine, \
+            parfile=options.file[0], timfile=options.file[1])
     qtipwin.raise_()        # Required on OSX to move the app to the foreground
     sys.exit(app.exec_())
+
+
 
 if __name__ == '__main__':
     main()
