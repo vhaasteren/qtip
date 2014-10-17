@@ -1,0 +1,24 @@
+MODE 1
+PSR              1748-2446G  
+RAJ               17:48:25
+DECJ             -24:47:10
+F0               46.142767  1
+PEPOCH        53227.000000
+POSEPOCH      53227.000000
+DM                  237.5
+EPHEM                DE405
+CLK               UNCORR
+F1 0.0 0 0.0
+PMRA           0.0     0  
+PMDEC          0.0    0  
+PX             0.0 0
+
+#SINI           0.0 0
+#BINARY         DD
+#PB             0.0 0
+#T0             52009.854408496369043     0  
+#A1             0.0 0
+#ECC            0.0  0  
+#PBDOT          0.0 0
+#XDOT           0.0 0
+#OMDOT          0.0 0
