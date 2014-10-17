@@ -6,5 +6,4 @@ qtip.egg-info
 *.pyc
 *.txt
 .DS_Store
-testdata/NGC*
-testdata/Ter5G*
+solvingpulsars
