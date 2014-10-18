@@ -16,7 +16,7 @@
     <div class="wrapper">
       <header>
         <h1>Qtip</h1>
-        <p>Qt Interface for Pulsar timing</p>
+        <p>Qtip —  Interface for Pulsar timing</p>
 
         <p class="view"><a href="https://github.com/vhaasteren/qtip">View the Project on GitHub <small>vhaasteren/qtip</small></a></p>
 
@@ -28,37 +28,43 @@
         </ul>
       </header>
       <section>
-        <h3>
-<a name="welcome-to-github-pages" class="anchor" href="#welcome-to-github-pages"><span class="octicon octicon-link"></span></a>Welcome to GitHub Pages.</h3>
+        <h1>A <em>modern</em> graphical interface to pulsar timing packages</h1>
 
-<p>This automatic page generator is the easiest way to create beautiful pages for all of your projects. Author your page content here using GitHub Flavored Markdown, select a template crafted by a designer, and publish. After your page is generated, you can check out the new branch:</p>
+        <p>The most widely used pulsar timing packages, <a href="http://tempo.sourceforge.net/">tempo</a> and <a href="http://tempo2.sourceforge.net/">tempo2</a>, are written in <code>FORTRAN</code> and <code>C++</code>. Programs written in these languages tend to be time-intensive to extend in terms of features. In the case of tempo2, a GUI is available in some plugins through the old <code>PgPlot</code> library.
+        </p>
 
-<pre><code>$ cd your_repo_root/repo_name
+        <p><code>Qtip</code> aims to bring the functionality of tempo and tempo2 into the modern age, by using <code>Qt</code> and <code>IPython</code>. The package currently relies on <a href="http://vallis.github.io/libstempo/">libstempo</a> as its timing engine, so the solutions are identical as when you are using tempo2 directly. Support for <a href="https://github.com/nanograv/PINT">PINT</a> is being added as PINT progresses in development.
+        </p>
+
+        <p> <code>Qtip</code> is designed for scientist. Scientists don't want a ready-made program that solves a problem. They don't want to just push a button. They want to fiddle with stuff. They want to do things the programmer has not thought of. Qtip tries to accommodate these needs by providing a full IPython interface alongside a graphical interface. Solve for a pulsar using our <code>Plk</code> emulator, while retaining direct access to the libstempo object at all times. This approach allows one to be much more productive when solving pulsars!
+        </p>
+
+        <h1>DISCLAIMER</h1>
+        <p>
+        Qtip is still in the very early stages of development. The plk emulator has basic functionality, so it is possible to solve pulsars, but it is nowhere near feature-complete. If you are interested in helping out you are encouraged to fork the project on github!
+        </p>
+
+<!-- <pre><code>$ cd your_repo_root/repo_name
 $ git fetch origin
 $ git checkout gh-pages
-</code></pre>
+</code></pre> -->
 
-<p>If you're using the GitHub for Mac, simply sync your repository and you'll see the new branch.</p>
+        <h3>Requirements</h3>
+        All of the requirements, except for tempo2, are available through pip
+        <ul>
+            <li>Python 2.7 (no Python 3 yet...)</li>
+            <li><a href="http://www.numpy.org/">numpy</a></li>
+            <li><a href="http://www.atnf.csiro.au/research/pulsar/tempo2/">tempo2</a></li>
+            <li><a href="http://vallis.github.io/libstempo/">libstempo</a> or <a href="https://github.com/nanograv/PINT">PINT</a></li>
+            <li>scipy</li>
+            <li>matplotlib</li>
+            <li>PyQt</li>
+            <li>IPython 2.0</li>
+            <li>pygments</li>
+            <li>pyzmq</li>
+            <li>jdcal</li>
+        </ul>
 
-<h3>
-<a name="designer-templates" class="anchor" href="#designer-templates"><span class="octicon octicon-link"></span></a>Designer Templates</h3>
-
-<p>We've crafted some handsome templates for you to use. Go ahead and continue to layouts to browse through them. You can easily go back to edit your page before publishing. After publishing your page, you can revisit the page generator and switch to another theme. Your Page content will be preserved if it remained markdown format.</p>
-
-<h3>
-<a name="rather-drive-stick" class="anchor" href="#rather-drive-stick"><span class="octicon octicon-link"></span></a>Rather Drive Stick?</h3>
-
-<p>If you prefer to not use the automatic generator, push a branch named <code>gh-pages</code> to your repository to create a page manually. In addition to supporting regular HTML content, GitHub Pages support Jekyll, a simple, blog aware static site generator written by our own Tom Preston-Werner. Jekyll makes it easy to create site-wide headers and footers without having to copy them across every page. It also offers intelligent blog support and other advanced templating features.</p>
-
-<h3>
-<a name="authors-and-contributors" class="anchor" href="#authors-and-contributors"><span class="octicon octicon-link"></span></a>Authors and Contributors</h3>
-
-<p>You can <a href="https://github.com/blog/821" class="user-mention">@mention</a> a GitHub username to generate a link to their profile. The resulting <code>&lt;a&gt;</code> element will link to the contributor's GitHub Profile. For example: In 2007, Chris Wanstrath (<a href="https://github.com/defunkt" class="user-mention">@defunkt</a>), PJ Hyett (<a href="https://github.com/pjhyett" class="user-mention">@pjhyett</a>), and Tom Preston-Werner (<a href="https://github.com/mojombo" class="user-mention">@mojombo</a>) founded GitHub.</p>
-
-<h3>
-<a name="support-or-contact" class="anchor" href="#support-or-contact"><span class="octicon octicon-link"></span></a>Support or Contact</h3>
-
-<p>Having trouble with Pages? Check out the documentation at <a href="http://help.github.com/pages">http://help.github.com/pages</a> or contact <a href="mailto:support@github.com">support@github.com</a> and we’ll help you sort it out.</p>
       </section>
       <footer>
         <p>This project is maintained by <a href="https://github.com/vhaasteren">vhaasteren</a></p>
