@@ -142,7 +142,7 @@ class QtipWindow(QtGui.QMainWindow):
         pass
 
     def onAbout(self):
-        msg = """ A demo of using PyQt with matplotlib, libstempo, and IPython:
+        msg = """ A plk emulator, written in Python. Powered by PyQt, matplotlib, libstempo, and IPython:
         """
         QtGui.QMessageBox.about(self, "About the demo", msg.strip())
 
@@ -176,8 +176,17 @@ class QtipWindow(QtGui.QMainWindow):
         self.aboutAction.setStatusTip('About Qtip')
         self.aboutAction.triggered.connect(self.onAbout)
 
-        self.statusBar()
-        
+        self.theStatusBar = QtGui.QStatusBar()
+        #self.statusBar()
+        self.setStatusBar(self.theStatusBar)
+
+        self.engine_label = QtGui.QLabel("Tempo2")
+        self.engine_label.setFrameStyle( QtGui.QFrame.Sunken|QtGui.QFrame.Panel)
+        self.engine_label.setLineWidth(4)
+        self.engine_label.setMidLineWidth(4)
+        self.engine_label.setStyleSheet("QLabel{color:black;background-color:red}")
+        self.theStatusBar.addPermanentWidget(self.engine_label)
+
         # On OSX, make sure the menu can be displayed (in the window itself)
         if sys.platform == 'darwin':
             # On OSX, the menubar is usually on the top of the screen, not in
@@ -451,7 +460,7 @@ class QtipWindow(QtGui.QMainWindow):
         else:
             trypint = False
 
-        engine, pclass = qp.get_engine(trypint=trypint)
+        self.engine, pclass = qp.get_engine(trypint=trypint)
 
         if engine == 'libstempo':
             if not testpulsar:

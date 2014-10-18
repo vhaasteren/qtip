@@ -74,6 +74,26 @@ except ImportError:
     print("PINT not available")
     have_pint = False
 
+
+def mjd2gcal(mjds):
+    """
+    Calculate the Gregorian dates from a numpy-array of MJDs
+
+    @param mjds:    Numpy array of MJDs
+    """
+    nmjds = len(mjds)
+    gyear = np.zeros(nmjds)
+    gmonth = np.zeros(nmjds)
+    gday = np.zeros(nmjds)
+    gfd = np.zeros(nmjds)
+
+    # TODO: get rid of ugly for loop. Use some zip or whatever
+    for ii in range(nmjds):
+        gyear[ii], gmonth[ii], gday[ii], gfd[ii] = \
+                jdcal.jd2gcal(jdcal.MJD_0, mjds[ii])
+    
+    return gyear, gmonth, gday, gfd
+
 def get_engine(trypint=True):
     """
     Return a working engine
@@ -152,14 +172,14 @@ class BasePulsar(object):
     """
 
     def __init__(self):
-        self.isolated = ['pre-fit', 'post-fit', 'date', 'serial', \
-            'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
+        self.isolated = ['pre-fit', 'post-fit', 'mjd', 'year', 'serial', \
+            'day of year', 'frequency', 'TOA error', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
         self.binary = ['orbital phase']
 
         # Plot labels = isolated + binary
-        self.plot_labels = ['pre-fit', 'post-fit', 'date', 'orbital phase', 'serial', \
-            'day of year', 'frequency', 'TOA error', 'year', 'elevation', \
+        self.plot_labels = ['pre-fit', 'post-fit', 'mjd', 'year', 'orbital phase', 'serial', \
+            'day of year', 'frequency', 'TOA error', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
 
     @property
@@ -189,94 +209,32 @@ class BasePulsar(object):
     @property
     def dayofyear(self):
         """
-        Calculate the day of the year for all the TOAs of this pulsar
+        Return the day of the year for all the TOAs of this pulsar
         """
-        day, jyear = self.dayandyear()
+        gyear, gmonth, gday, gfd = mjd2gcal(self.toas)
 
-        return day
+        mjdy = np.array([jdcal.gcal2jd(gyear[ii], 1, 0)[1] for ii in range(len(gyear))])
+
+        return self.toas - mjdy
 
     @property
     def year(self):
         """
         Calculate the year for all the TOAs of this pulsar
         """
-        day, jyear = self.dayandyear()
+        #day, jyear = self.dayandyear_old()
+        gyear, gmonth, gday, gfd = mjd2gcal(self.toas)
 
-        return jyear
+        # MJD of start of the year (31st Dec)
+        mjdy = np.array([jdcal.gcal2jd(gyear[ii], 1, 0)[1] for ii in range(len(gfd))])
+        # MJD of end of the year
+        mjdy1 = np.array([jdcal.gcal2jd(gyear[ii]+1, 1, 0)[1] for ii in range(len(gfd))])
 
-    def dayandyear(self):
-        """
-        Calculate the day of the year, and the year
-        """
-        # Adjusted from plk_plug.C
-        jd = self.toas + 2400000.5
-        ijd = np.round(jd)
-        fjd = (jd + 0.5) - ijd
+        # Day of the year
+        doy = self.toas - mjdy
+        
+        return gyear + (self.toas - mjdy) / (mjdy1 - mjdy)
 
-        b = np.zeros(len(ijd))
-        for ii, eijd in enumerate(ijd):
-            if eijd > 2299160:
-                a = np.floor((eijd-1867216.25)/36524.25)
-                b[ii] = eijd + 1 + a - np.floor(a / 4)
-            else:
-                b[ii] = eijd
-
-        c = b + 1524
-
-        d = np.floor((c - 122.1)/365.25)
-        e = np.floor(365.25*d)
-        g = np.floor((c-e)/30.6001)
-        day = c-e+fjd-np.floor(30.6001*g)
-
-        month = np.zeros(len(g))
-        year = np.zeros(len(g))
-        for ii, eg in enumerate(g):
-            if eg < 13.5:
-                month[ii] = eg - 1
-            else:
-                month[ii] = eg - 13
-
-            if month[ii] > 2.5:
-                year[ii] = d[ii] - 4716
-            else:
-                year[ii] = d[ii] - 4715
-            
-        jyear = np.zeros(len(year))
-        jmonth = np.zeros(len(day))
-        jday = np.zeros(len(day))
-        mjday = np.zeros(len(day))
-        doy = np.zeros(len(day))
-        for ii in range(len(year)):
-            # Gregorian calendar to Julian calendar
-            # slaCalyd(year, month, (int)day, &retYr, &retDay, &stat);
-            (temp, mjday[ii]) = jdcal.gcal2jd(year[ii], month[ii], day[ii])
-
-            (jyear[ii], jmonth[ii], jday[ii], temp) = jdcal.jd2jcal(*jdcal.gcal2jd(year[ii], month[ii], day[ii]))
-
-            (jyear[ii], jm, jd, temp) = jdcal.jd2jcal(temp, mjday[ii])
-            (temp, doy[ii]) = jdcal.jcal2jd(jyear[ii], 1, 1)
-            doy[ii] += 1
-            
-        # Not ok yet...
-        print("WARNING: jdcal not used well yet...")
-
-        return day, jyear
-
-    @property
-    def elevation(self):
-        # Need to have observatory implemented in XPulsar
-        """
-            observatory *obs;
-            double source_elevation;
-
-            obs = getObservatory(psr[0].obsn[iobs].telID);
-            // get source elevation neglecting proper motion
-            source_elevation = asin(dotproduct(psr[0].obsn[iobs].zenith,
-                   psr[0].posPulsar)
-                / obs->height_grs80);
-            x[count] = source_elevation*180.0/M_PI;
-        """
-        pass
 
     @property
     def siderealt(self):
@@ -329,6 +287,48 @@ class BasePulsar(object):
           //      printf("Local sidereal time = %s %g %g %g %g %g\n",psr[0].obsn[iobs].fname,ph,tsid,pc,siteCoord[2],x[count]);
        }
         """
+
+        """
+// Get sidereal time
+double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
+{
+   double xlst,sdd;
+   double gmst0;
+   double a = 24110.54841;
+   double b = 8640184.812866;
+   double c = 0.093104;
+   double d = -6.2e-6;
+   double bprime,cprime,dprime;
+   double tu0,fmjdu1,dtu,tu,seconds_per_jc,gst;
+   int nmjdu1;
+
+   nmjdu1 = (int)mjd;
+   fmjdu1 = mjd - nmjdu1;
+
+   tu0 = ((double)(nmjdu1-51545)+0.5)/3.6525e4;
+   dtu  =fmjdu1/3.6525e4;
+   tu = tu0+dtu;
+   gmst0 = (a + tu0*(b+tu0*(c+tu0*d)))/86400.0;
+   seconds_per_jc = 86400.0*36525.0;
+
+   bprime = 1.0 + b/seconds_per_jc;
+   cprime = 2.0 * c/seconds_per_jc;
+   dprime = 3.0 * d/seconds_per_jc;
+
+   sdd = bprime+tu*(cprime+tu*dprime);
+
+   gst = gmst0 + dtu*(seconds_per_jc + b + c*(tu+tu0) + d*(tu*tu+tu*tu0+tu0*tu0))/86400;
+   xlst = gst - olong/360.0;
+   xlst = fortran_mod(xlst,1.0);
+
+   if (xlst<0.0)xlst=xlst+1.0;
+
+   *tsid = xlst;
+   *tsid_der = sdd;
+   return 0.0;
+}
+
+        """
         
 
 
@@ -350,7 +350,7 @@ class BasePulsar(object):
             data = self.residuals * 1e6
             error = self.toaerrs
             plotlabel = r"Post-fit residual ($\mu$s)"
-        elif label == 'date':
+        elif label == 'mjd':
             data = self.toas
             error = self.toaerrs * 1e-6
             plotlabel = r'MJD'
@@ -379,12 +379,14 @@ class BasePulsar(object):
             error = None
             plotlabel = "TOA uncertainty"
         elif label == 'elevation':
-            data = np.zeros(len(self.toas))
+            data = self.elevation
             error = None
             plotlabel = 'Elevation'
-            print("WARNING: parameter {0} not yet implemented".format(label))
         elif label == 'rounded MJD':
-            print("WARNING: parameter {0} not yet implemented".format(label))
+            # TODO: Do we floor, or round like this?
+            data = np.floor(self.toas + 0.5)
+            error = self.toaerrs * 1e-6
+            plotlabel = r'MJD'
         elif label == 'sidereal time':
             print("WARNING: parameter {0} not yet implemented".format(label))
         elif label == 'hour angle':
@@ -586,6 +588,11 @@ class LTPulsar(BasePulsar):
     def freqsSSB(self):
         """ Observing frequencies """
         return self._psr.freqsSSB
+
+    @property
+    def elevation(self):
+        """Source elevation"""
+        return self._psr.elevation()
 
     @property
     def residuals(self, updatebats=True, formresiduals=True):

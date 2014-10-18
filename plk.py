@@ -421,7 +421,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
             # The X and Y radio buttons
             radio = QtGui.QRadioButton("")
             self.grid.addWidget(radio, 1+ii, labellength, 1, 1)
-            if choice.lower() == 'date':
+            if choice.lower() == 'mjd':
                 radio.setChecked(True)
                 self.xSelected = ii
             self.xButtonGroup.addButton(radio)
@@ -692,6 +692,7 @@ class PlkWidget(QtGui.QWidget):
             self.plkAxes.errorbar(x, y, yerr=yerr, fmt='.', color='green')
 
         self.plkAxes.axis([xmin, xmax, ymin, ymax])
+        self.plkAxes.get_xaxis().get_major_formatter().set_useOffset(False)
         self.plkAxes.set_xlabel(xlabel)
         self.plkAxes.set_ylabel(ylabel)
         self.plkAxes.set_title(title)
