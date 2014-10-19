@@ -36,7 +36,7 @@ import qtpulsar as qp
 
 class BinaryWidget(QtGui.QWidget):
     """
-    The plk-emulator window.
+    The binary-widget window.
 
     @param parent:      Parent window
     """
@@ -54,10 +54,10 @@ class BinaryWidget(QtGui.QWidget):
     def initBin(self):
         self.setMinimumSize(650, 550)
 
-        self.plkbox = QtGui.QVBoxLayout()                       # plkbox contains the whole plk widget
-        self.xyplotbox = QtGui.QHBoxLayout()                    # plkbox contains the whole plk widget
-        self.fitboxesWidget = BinFitboxesWidget(parent=self)    # Contains all the checkboxes
-        self.actionsWidget = BinActionsWidget(parent=self)
+        self.binarybox = QtGui.QVBoxLayout()                       # binarybox contains the whole plk widget
+        #self.xyplotbox = QtGui.QHBoxLayout()                    # plkbox contains the whole plk widget
+        #self.fitboxesWidget = BinFitboxesWidget(parent=self)    # Contains all the checkboxes
+        #self.actionsWidget = BinActionsWidget(parent=self)
 
         # We are creating the Figure here, so set the color scheme appropriately
         self.setColorScheme(True)
@@ -65,24 +65,24 @@ class BinaryWidget(QtGui.QWidget):
         # Create the mpl Figure and FigCanvas objects. 
         # 5x4 inches, 100 dots-per-inch
         #
-        self.plkDpi = 100
-        self.plkFig = Figure((5.0, 4.0), dpi=self.plkDpi)
-        self.plkCanvas = FigureCanvas(self.plkFig)
-        self.plkCanvas.setParent(self)
+        self.binDpi = 100
+        self.binFig = Figure((5.0, 4.0), dpi=self.binDpi)
+        self.binCanvas = FigureCanvas(self.binFig)
+        self.binCanvas.setParent(self)
 
         # Since we have only one plot, we can use add_axes 
         # instead of add_subplot, but then the subplot
         # configuration tool in the navigation toolbar wouldn't
         # work.
         #
-        self.plkAxes = self.plkFig.add_subplot(111)
+        self.binAxes = self.binFig.add_subplot(111)
 
         # Done creating the Figure. Restore color scheme to defaults
         self.setColorScheme(False)
         
         # Call-back functions for clicking and key-press.
-        self.plkCanvas.mpl_connect('button_press_event', self.canvasClickEvent)
-        self.plkCanvas.mpl_connect('key_press_event', self.canvasKeyEvent)
+        self.binCanvas.mpl_connect('button_press_event', self.canvasClickEvent)
+        self.binCanvas.mpl_connect('key_press_event', self.canvasKeyEvent)
 
         # Create the navigation toolbar, tied to the canvas
         #
@@ -92,7 +92,7 @@ class BinaryWidget(QtGui.QWidget):
         self.drawSomething()
 
         # Create the XY choice widget
-        self.xyChoiceWidget = BinXYPlotWidget(parent=self)
+        #self.xyChoiceWidget = BinXYPlotWidget(parent=self)
 
         # At startup, all the widgets are visible
         self.xyChoiceVisible = True
@@ -139,11 +139,11 @@ class BinaryWidget(QtGui.QWidget):
         an empty figure
         """
         self.setColorScheme(True)
-        self.plkAxes.clear()
-        self.plkAxes.grid(True)
-        self.plkAxes.set_xlabel('MJD')
-        self.plkAxes.set_ylabel('Residual ($\mu$s)')
-        self.plkCanvas.draw()
+        #self.binAxes.clear()
+        #self.binAxes.grid(True)
+        #self.binAxes.set_xlabel('MJD')
+        #self.binAxes.set_ylabel('Residual ($\mu$s)')
+        #self.binCanvas.draw()
         self.setColorScheme(False)
 
     def setPulsar(self, psr):
@@ -153,12 +153,12 @@ class BinaryWidget(QtGui.QWidget):
         self.psr = psr
 
         # Update the fitting checkboxes
-        self.fitboxesWidget.setPulsar(psr)
-        self.xyChoiceWidget.setPulsar(psr, self.updatePlot)
-        self.actionsWidget.setPulsar(psr, self.updatePlot, self.reFit)
+        #self.fitboxesWidget.setPulsar(psr)
+        #self.xyChoiceWidget.setPulsar(psr, self.updatePlot)
+        #self.actionsWidget.setPulsar(psr, self.updatePlot, self.reFit)
 
         # Draw the residuals
-        self.xyChoiceWidget.updateChoice()
+        #self.xyChoiceWidget.updateChoice()
         self.show()
 
     def reFit(self):
@@ -182,23 +182,23 @@ class BinaryWidget(QtGui.QWidget):
         Initialise the basic layout of this plk emulator emulator
         """
         # Initialise the plk box
-        self.plkbox.addWidget(self.fitboxesWidget)
+        #self.plkbox.addWidget(self.fitboxesWidget)
 
-        self.xyplotbox.addWidget(self.xyChoiceWidget)
-        self.xyplotbox.addWidget(self.plkCanvas)
+        #self.xyplotbox.addWidget(self.xyChoiceWidget)
+        #self.xyplotbox.addWidget(self.binCanvas)
 
-        self.plkbox.addLayout(self.xyplotbox)
+        #self.plkbox.addLayout(self.xyplotbox)
 
-        self.plkbox.addWidget(self.actionsWidget)
-        self.setLayout(self.plkbox)
+        #self.plkbox.addWidget(self.actionsWidget)
+        self.setLayout(self.binarybox)
 
     def showVisibleWidgets(self):
         """
         Show the correct widgets in the plk Window
         """
-        self.xyChoiceWidget.setVisible(self.xyChoiceVisible)
-        self.fitboxesWidget.setVisible(self.fitboxVisible)
-        self.actionsWidget.setVisible(self.actionsVisible)
+        #self.xyChoiceWidget.setVisible(self.xyChoiceVisible)
+        #self.fitboxesWidget.setVisible(self.fitboxVisible)
+        #self.actionsWidget.setVisible(self.actionsVisible)
 
 
     def updatePlot(self):
@@ -212,7 +212,8 @@ class BinaryWidget(QtGui.QWidget):
             #print("Mask has {0} toas".format(np.sum(msk)))
 
             # Get the IDs of the X and Y axis
-            xid, yid = self.xyChoiceWidget.plotids()
+            #xid, yid = self.xyChoiceWidget.plotids()
+            xid, yid = 'MJD', 'post-fit'
 
             # Retrieve the data
             x, xerr, xlabel = self.psr.data_from_label(xid)
@@ -237,8 +238,8 @@ class BinaryWidget(QtGui.QWidget):
         Update the plot, given all the plotting info
         """
         self.setColorScheme(True)
-        self.plkAxes.clear()
-        self.plkAxes.grid(True)
+        self.binAxes.clear()
+        self.binAxes.grid(True)
 
         xave = 0.5 * (np.max(x) + np.min(x))
         xmin = xave - 1.05 * (xave - np.min(x))
@@ -247,26 +248,26 @@ class BinaryWidget(QtGui.QWidget):
             yave = 0.5 * (np.max(y) + np.min(y))
             ymin = yave - 1.05 * (yave - np.min(y))
             ymax = yave + 1.05 * (np.max(y) - yave)
-            self.plkAxes.scatter(x, y, marker='.', c='g')
+            self.binAxes.scatter(x, y, marker='.', c='g')
         else:
             yave = 0.5 * (np.max(y+yerr) + np.min(y-yerr))
             ymin = yave - 1.05 * (yave - np.min(y-yerr))
             ymax = yave + 1.05 * (np.max(y+yerr) - yave)
-            self.plkAxes.errorbar(x, y, yerr=yerr, fmt='.', color='green')
+            self.binAxes.errorbar(x, y, yerr=yerr, fmt='.', color='green')
 
-        self.plkAxes.axis([xmin, xmax, ymin, ymax])
-        self.plkAxes.get_xaxis().get_major_formatter().set_useOffset(False)
-        self.plkAxes.set_xlabel(xlabel)
-        self.plkAxes.set_ylabel(ylabel)
-        self.plkAxes.set_title(title)
-        self.plkCanvas.draw()
+        self.binAxes.axis([xmin, xmax, ymin, ymax])
+        self.binAxes.get_xaxis().get_major_formatter().set_useOffset(False)
+        self.binAxes.set_xlabel(xlabel)
+        self.binAxes.set_ylabel(ylabel)
+        self.binAxes.set_title(title)
+        self.binCanvas.draw()
         self.setColorScheme(False)
 
     def setFocusToCanvas(self):
         """
         Set the focus to the plk Canvas
         """
-        self.plkCanvas.setFocus()
+        self.binCanvas.setFocus()
 
     def coord2point(self, cx, cy):
         """
@@ -285,7 +286,8 @@ class BinaryWidget(QtGui.QWidget):
             msk = self.psr.mask('plot')
 
             # Get the IDs of the X and Y axis
-            xid, yid = self.xyChoiceWidget.plotids()
+            #xid, yid = self.xyChoiceWidget.plotids()
+            xid, yid = 'MJD', 'post-fit'
 
             # Retrieve the data
             x, xerr, xlabel = self.psr.data_from_label(xid)
@@ -293,7 +295,7 @@ class BinaryWidget(QtGui.QWidget):
 
             if np.sum(msk) > 0 and x is not None and y is not None:
                 # Obtain the limits
-                xmin, xmax, ymin, ymax = self.plkAxes.axis()
+                xmin, xmax, ymin, ymax = self.binAxes.axis()
 
                 dist = ((x[msk]-cx)/(xmax-xmin))**2 + ((y[msk]-cy)/(ymax-ymin))**2
                 ind = np.arange(len(x))[msk][np.argmin(dist)]
@@ -434,6 +436,6 @@ class BinaryWidget(QtGui.QWidget):
         When one presses a button on the Figure/Canvas, this function is called.
         The coordinates of the click are stored in event.xdata, event.ydata
         """
-        # Callback to the plkWidget
+        # Callback to the binaryWidget
         self.keyPressEvent(event)
 

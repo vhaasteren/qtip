@@ -30,6 +30,7 @@ import qtpulsar as qp
 import constants
 
 from plk import *
+from binary import BinaryWidget
 
 # The startup banner
 QtipBanner = """Qtip python console, by Rutger van Haasteren
@@ -117,6 +118,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.createIPythonKernel()
 
         # Create the display widgets
+        self.createBinaryWidget()
         self.createPlkWidget()
         self.createIPythonWidget()
         self.createOpenSomethingWidget()
@@ -133,8 +135,8 @@ class QtipWindow(QtGui.QMainWindow):
         else:
             testpulsar = False
 
-        self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
-                timfilename=timfile, engine=engine)
+        #self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
+        #        timfilename=timfile, engine=engine)
 
         self.show()
 
@@ -165,6 +167,16 @@ class QtipWindow(QtGui.QMainWindow):
         self.exitAction.setShortcut('Ctrl+Q')
         self.exitAction.setStatusTip('Exit application')
         self.exitAction.triggered.connect(self.close)
+
+        self.toggleBinaryAction = QtGui.QAction('&Binary', self)        
+        self.toggleBinaryAction.setShortcut('Ctrl+B')
+        self.toggleBinaryAction.setStatusTip('Toggle binary widget')
+        self.toggleBinaryAction.triggered.connect(self.toggleBinary)
+
+        self.togglePlkAction = QtGui.QAction('&Plk', self)        
+        self.togglePlkAction.setShortcut('Ctrl+P')
+        self.togglePlkAction.setStatusTip('Toggle plk widget')
+        self.togglePlkAction.triggered.connect(self.togglePlk)
 
         self.toggleIPythonAction = QtGui.QAction('&IPython', self)        
         self.toggleIPythonAction.setShortcut('Ctrl+I')
@@ -205,6 +217,8 @@ class QtipWindow(QtGui.QMainWindow):
         self.fileMenu.addAction(self.openParTimAction)
         self.fileMenu.addAction(self.exitAction)
         self.viewMenu = self.menubar.addMenu('&View')
+        self.viewMenu.addAction(self.toggleBinaryAction)
+        self.viewMenu.addAction(self.togglePlkAction)
         self.viewMenu.addAction(self.toggleIPythonAction)
         self.helpMenu = self.menubar.addMenu('&Help')
         self.helpMenu.addAction(self.aboutAction)
@@ -280,6 +294,12 @@ class QtipWindow(QtGui.QMainWindow):
         self.plkWidget = PlkWidget(parent=self.mainFrame)
         self.plkWidget.hide()
 
+    def createBinaryWidget(self):
+        """
+        Create the binary model widget
+        """
+        self.binaryWidget = BinaryWidget(parent=self.mainFrame)
+        self.binaryWidget.hide()
 
     def toggleIPython(self):
         """
@@ -287,12 +307,26 @@ class QtipWindow(QtGui.QMainWindow):
         """
         self.setQtipLayout(showIPython = not self.showIPython)
 
+    def toggleBinary(self):
+        """
+        Toggle the binary model widget on or off
+        """
+        self.setQtipLayout(whichWidget='binary')
+
+    def togglePlk(self):
+        """
+        Toggle the plk widget on or off
+        """
+        self.setQtipLayout(whichWidget='plk')
+
+
     def initQtipLayout(self):
         """
         Initialise the Qtip layout
         """
         self.hbox.addWidget(self.openSomethingWidget)
         self.hbox.addWidget(self.plkWidget)
+        self.hbox.addWidget(self.binaryWidget)
         self.hbox.addStretch(1)
         self.hbox.addWidget(self.consoleWidget)
         self.mainFrame.setLayout(self.hbox)
@@ -319,6 +353,7 @@ class QtipWindow(QtGui.QMainWindow):
         """
         self.openSomethingWidget.hide()
         self.plkWidget.hide()
+        self.binaryWidget.hide()
         self.consoleWidget.hide()
 
     def showVisibleWidgets(self):
@@ -332,6 +367,8 @@ class QtipWindow(QtGui.QMainWindow):
             self.plkWidget.show()
         elif self.whichWidget.lower() == 'piccard':
             pass
+        elif self.whichWidget.lower() == 'binary':
+            self.binaryWidget.show()
 
         if self.showIPython:
             self.consoleWidget.show()
@@ -339,8 +376,9 @@ class QtipWindow(QtGui.QMainWindow):
             pass
 
         if self.whichWidget.lower() == 'plk' and not self.showIPython:
-            #self.plkWidget.setFocus()
             self.plkWidget.setFocusToCanvas()
+        elif self.whichWidget.lower() == 'binary' and not self.showIPython:
+            self.binaryWidget.setFocusToCanvas()
         #elif self.showIPython:
         #    self.consoleWidget.setFocus()
 
@@ -495,6 +533,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Update the plk widget
         self.plkWidget.setPulsar(psr)
+        self.binaryWidget.setPulsar(psr)
 
         # Communicating with the kernel goes as follows
         # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
@@ -551,7 +590,10 @@ class QtipWindow(QtGui.QMainWindow):
         # TODO: Do more than just update the plot, but also update _all_ the
         # widgets. Make a callback in plkWidget for that. QtipWindow might also
         # want to loop over some stuff.
-        self.plkWidget.updatePlot()
+        if self.whichWidget == 'plk':
+            self.plkWidget.updatePlot()
+        elif self.whichWidget == 'binary':
+            self.binaryWidget.updatePlot()
         
 def main():
     # The option parser
