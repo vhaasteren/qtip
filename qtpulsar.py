@@ -30,7 +30,7 @@ from matplotlib.figure import Figure
 import numpy as np
 import time
 import tempfile
-from constants import J1744_parfile, J1744_timfile
+from constants import J1744_parfile, J1744_timfile, J1744_parfile_basic 
 
 # For date conversions
 import jdcal        # pip install jdcal
@@ -63,14 +63,14 @@ try:
     import pint.models as tm
     from pint.phase import Phase
     from pint import toa
-    import pint_temp
+    #import pint_temp
     print("PINT available")
     have_pint = True
 except ImportError:
     tm = None
     Phase = None
     toa = None
-    pint_temp = None
+    #pint_temp = None
     print("PINT not available")
     have_pint = False
 
@@ -668,7 +668,7 @@ class PPulsar(BasePulsar):
             timfilename = tempfile.mktemp()
             parfile = open(parfilename, 'w')
             timfile = open(timfilename, 'w')
-            parfile.write(J1744_parfile)
+            parfile.write(J1744_parfile_basic)
             timfile.write(J1744_timfile)
             parfile.close()
             timfile.close()
@@ -691,23 +691,27 @@ class PPulsar(BasePulsar):
         t0 = time.time()
         t = toa.get_TOAs(timfilename)
         time_toa = time.time() - t0
+        t.print_summary()
 
         sys.stderr.write("Read/corrected TOAs in %.3f sec\n" % time_toa)
 
         self._mjds = t.get_mjds()
-        d_tdbs = np.array([x.tdb.delta_tdb_tt for x in t.table['mjd']])
+        #d_tdbs = np.array([x.tdb.delta_tdb_tt for x in t.table['mjd']])
         self._toaerrs = t.get_errors()
         resids = np.zeros_like(self._mjds)
-        ss_roemer = np.zeros_like(self._mjds)
-        ss_shapiro = np.zeros_like(self._mjds)
+        #ss_roemer = np.zeros_like(self._mjds)
+        #ss_shapiro = np.zeros_like(self._mjds)
 
         sys.stderr.write("Computing residuals...\n")
         t0 = time.time()
-        for ii, tt in enumerate(t.table):
-            p = m.phase(tt)
-            resids[ii] = p.frac
-            ss_roemer[ii] = m.solar_system_geometric_delay(tt)
-            ss_shapiro[ii] = m.solar_system_shapiro_delay(tt)
+        phases = m.phase(t.table)
+        resids = phases.frac
+
+        #for ii, tt in enumerate(t.table):
+        #    p = m.phase(tt)
+        #    resids[ii] = p.frac
+        #    ss_roemer[ii] = m.solar_system_geometric_delay(tt)
+        #    ss_shapiro[ii] = m.solar_system_shapiro_delay(tt)
 
         time_phase = time.time() - t0
         sys.stderr.write("Computed phases in %.3f sec\n" % time_phase)
