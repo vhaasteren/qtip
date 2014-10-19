@@ -280,14 +280,15 @@ class PlkFitboxesWidget(QtGui.QWidget):
         """
         self.psr = psr
         self.deleteFitCheckBoxes()
-        self.addFitCheckBoxes(psr.setpars, psr.fitpars)
+        self.addFitCheckBoxes(psr.setpars, psr.fitpars, psr.nofitboxpars)
 
-    def addFitCheckBoxes(self, setpars, fitpars):
+    def addFitCheckBoxes(self, setpars, fitpars, nofitbox):
         """
         Add the fitting checkboxes at the top of the plk Window
 
         @param setpars:     The parameters that are 'set' (in the model)
         @param fitpars:     The parameters that are currently being fitted for
+        @param nofitbox:    The parameters we should skip
         """
         # Delete the fitboxes if there were still some left
         if not len(self.vboxes) == 0:
@@ -301,7 +302,7 @@ class PlkFitboxesWidget(QtGui.QWidget):
         # Then add the checkbox widgets to the vboxes
         index = 0
         for pp, par in enumerate(setpars):
-            if not par in ['START', 'FINISH']:
+            if not par in nofitbox:
                 vboxind = index % self.fitboxPerLine
 
                 cb = QtGui.QCheckBox(par, self)
