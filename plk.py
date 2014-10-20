@@ -597,7 +597,8 @@ class PlkWidget(QtGui.QWidget):
 
         # Draw the residuals
         self.xyChoiceWidget.updateChoice()
-        self.show()
+        # This screws up the show/hide logistics
+        #self.show()
 
     def reFit(self):
         """

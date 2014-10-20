@@ -135,8 +135,9 @@ class QtipWindow(QtGui.QMainWindow):
         else:
             testpulsar = False
 
-        #self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
-        #        timfilename=timfile, engine=engine)
+        # Are we going to open plk straight away?
+        self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
+                timfilename=timfile, engine=engine)
 
         self.show()
 

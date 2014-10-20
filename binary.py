@@ -159,7 +159,8 @@ class BinaryWidget(QtGui.QWidget):
 
         # Draw the residuals
         #self.xyChoiceWidget.updateChoice()
-        self.show()
+        # This screws up the show/hide logistics
+        #self.show()
 
     def reFit(self):
         """
@@ -199,6 +200,7 @@ class BinaryWidget(QtGui.QWidget):
         #self.xyChoiceWidget.setVisible(self.xyChoiceVisible)
         #self.fitboxesWidget.setVisible(self.fitboxVisible)
         #self.actionsWidget.setVisible(self.actionsVisible)
+        pass
 
 
     def updatePlot(self):
