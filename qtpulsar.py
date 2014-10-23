@@ -211,11 +211,11 @@ class BasePulsar(object):
         """
         Return the day of the year for all the TOAs of this pulsar
         """
-        gyear, gmonth, gday, gfd = mjd2gcal(self.toas)
+        gyear, gmonth, gday, gfd = mjd2gcal(self.stoas)
 
         mjdy = np.array([jdcal.gcal2jd(gyear[ii], 1, 0)[1] for ii in range(len(gyear))])
 
-        return self.toas - mjdy
+        return self.stoas - mjdy
 
     @property
     def year(self):
@@ -223,7 +223,7 @@ class BasePulsar(object):
         Calculate the year for all the TOAs of this pulsar
         """
         #day, jyear = self.dayandyear_old()
-        gyear, gmonth, gday, gfd = mjd2gcal(self.toas)
+        gyear, gmonth, gday, gfd = mjd2gcal(self.stoas)
 
         # MJD of start of the year (31st Dec)
         mjdy = np.array([jdcal.gcal2jd(gyear[ii], 1, 0)[1] for ii in range(len(gfd))])
@@ -231,9 +231,9 @@ class BasePulsar(object):
         mjdy1 = np.array([jdcal.gcal2jd(gyear[ii]+1, 1, 0)[1] for ii in range(len(gfd))])
 
         # Day of the year
-        doy = self.toas - mjdy
+        doy = self.stoas - mjdy
         
-        return gyear + (self.toas - mjdy) / (mjdy1 - mjdy)
+        return gyear + (self.stoas - mjdy) / (mjdy1 - mjdy)
 
 
     @property
@@ -351,7 +351,7 @@ double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
             error = self.toaerrs
             plotlabel = r"Post-fit residual ($\mu$s)"
         elif label == 'mjd':
-            data = self.toas
+            data = self.stoas
             error = self.toaerrs * 1e-6
             plotlabel = r'MJD'
         elif label == 'orbital phase':
@@ -359,7 +359,7 @@ double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
             error = None
             plotlabel = 'Orbital Phase'
         elif label == 'serial':
-            data = np.arange(len(self.toas))
+            data = np.arange(len(self.stoas))
             error = None
             plotlabel = 'TOA number'
         elif label == 'day of year':
@@ -384,7 +384,7 @@ double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
             plotlabel = 'Elevation'
         elif label == 'rounded MJD':
             # TODO: Do we floor, or round like this?
-            data = np.floor(self.toas + 0.5)
+            data = np.floor(self.stoas + 0.5)
             error = self.toaerrs * 1e-6
             plotlabel = r'MJD'
         elif label == 'sidereal time':
@@ -404,27 +404,27 @@ double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
         @param flagID:  If set, only give mask for a given flag (+flagVal)
         @param flagVal: If set, only give mask for a given flag (+flagID)
         """
-        msk = np.ones(len(self.toas), dtype=np.bool)
+        msk = np.ones(len(self.stoas), dtype=np.bool)
         if mtype=='range':
-            msk = np.ones(len(self.toas), dtype=np.bool)
+            msk = np.ones(len(self.stoas), dtype=np.bool)
             if self['START'].set and self['START'].fit:
-                msk[self.toas < self['START'].val] = False
+                msk[self.stoas < self['START'].val] = False
             if self['FINISH'].set and self['FINISH'].fit:
-                msk[self.toas > self['FINISH'].val] = False
+                msk[self.stoas > self['FINISH'].val] = False
         elif mtype=='deleted':
             msk = self.deleted
         elif mtype=='noplot':
             msk = self.deleted
             if self['START'].set and self['START'].fit:
-                msk[self.toas < self['START'].val] = True
+                msk[self.stoas < self['START'].val] = True
             if self['FINISH'].set and self['FINISH'].fit:
-                msk[self.toas > self['FINISH'].val] = True
+                msk[self.stoas > self['FINISH'].val] = True
         elif mtype=='plot':
             msk = np.logical_not(self.deleted)
             if self['START'].set and self['START'].fit:
-                msk[self.toas < self['START'].val] = False
+                msk[self.stoas < self['START'].val] = False
             if self['FINISH'].set and self['FINISH'].fit:
-                msk[self.toas > self['FINISH'].val] = False
+                msk[self.stoas > self['FINISH'].val] = False
 
         return msk
 
@@ -458,12 +458,12 @@ class LTPulsar(BasePulsar):
             parfile.close()
             timfile.close()
 
-            self._psr = lt.tempopulsar(parfilename, timfilename)
+            self._psr = lt.tempopulsar(parfilename, timfilename, dofit=False)
 
             os.remove(parfilename)
             os.remove(timfilename)
         elif parfile is not None and timfile is not None:
-            self._psr = lt.tempopulsar(parfile, timfile)
+            self._psr = lt.tempopulsar(parfile, timfile, dofit=False)
         else:
             raise ValueError("No valid pulsar to load")
 
@@ -690,7 +690,6 @@ class LTPulsar(BasePulsar):
     @property
     def stoas(self):
         """ Site arrival times """
-        raise NotImplemented("Not done")
         return self._psr.stoas
 
     @property
@@ -760,6 +759,12 @@ class LTPulsar(BasePulsar):
 
     def savetim(self, timfile):
         self._psr(timfile)
+
+    def phasejumps(self):
+        return self._psr.phasejumps()
+
+    def add_phasejump(self, mjd, phasejump):
+        self._psr.add_phasejump(mjd, phasejump)
 
 
 

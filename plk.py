@@ -370,7 +370,6 @@ class PlkXYPlotWidget(QtGui.QWidget):
         super(PlkXYPlotWidget, self).__init__(parent, **kwargs)
 
         self.psr = None
-        self.updatePlotL = None
         self.parent = parent
 
         # We are going to use a grid layout:
@@ -644,6 +643,10 @@ class PlkWidget(QtGui.QWidget):
         """
         Update the plot/figure
         """
+        self.setColorScheme(True)
+        self.plkAxes.clear()
+        self.plkAxes.grid(True)
+
         if self.psr is not None:
             # Get a mask for the plotting points
             msk = self.psr.mask('plot')
@@ -666,19 +669,21 @@ class PlkWidget(QtGui.QWidget):
                 else:
                     yerrp = None
 
-                self.updatePlotL(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
+                self.plotResiduals(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
+
+                if xid in ['mjd', 'year', 'rounded MJD']:
+                    self.plotPhaseJumps(self.psr.phasejumps())
             else:
                 raise ValueError("Nothing to plot!")
 
+        self.plkCanvas.draw()
+        self.setColorScheme(False)
 
-    def updatePlotL(self, x, y, yerr, xlabel, ylabel, title):
+
+    def plotResiduals(self, x, y, yerr, xlabel, ylabel, title):
         """
         Update the plot, given all the plotting info
         """
-        self.setColorScheme(True)
-        self.plkAxes.clear()
-        self.plkAxes.grid(True)
-
         xave = 0.5 * (np.max(x) + np.min(x))
         xmin = xave - 1.05 * (xave - np.min(x))
         xmax = xave + 1.05 * (np.max(x) - xave)
@@ -698,8 +703,21 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.set_xlabel(xlabel)
         self.plkAxes.set_ylabel(ylabel)
         self.plkAxes.set_title(title)
-        self.plkCanvas.draw()
-        self.setColorScheme(False)
+
+    def plotPhaseJumps(self, phasejumps):
+        """
+        Plot the phase jump lines, if we have any
+        """
+        xmin, xmax, ymin, ymax = self.plkAxes.axis()
+
+        if len(phasejumps) > 0:
+            phasejumps = np.array(phasejumps)
+
+            for ii in range(len(phasejumps)):
+                if phasejumps[ii,1] != 0:
+                    # TODO: Add the jump size on top of the plot
+                    self.plkAxes.vlines(phasejumps[ii,0], ymin, ymax,
+                            color='darkred', linestyle='--', linewidth=0.5)
 
     def setFocusToCanvas(self):
         """
@@ -707,13 +725,14 @@ class PlkWidget(QtGui.QWidget):
         """
         self.plkCanvas.setFocus()
 
-    def coord2point(self, cx, cy):
+    def coord2point(self, cx, cy, which='xy'):
         """
         Given data coordinates x and y, obtain the index of the observations
         that is closest to it
         
-        @param cx:  x-value of the coordinates
-        @param cy:  y-value of the coordinates
+        @param cx:      x-value of the coordinates
+        @param cy:      y-value of the coordinates
+        @param which:   which axis to include in distance measure [xy/x/y]
         
         @return:    Index of observation
         """
@@ -734,7 +753,15 @@ class PlkWidget(QtGui.QWidget):
                 # Obtain the limits
                 xmin, xmax, ymin, ymax = self.plkAxes.axis()
 
-                dist = ((x[msk]-cx)/(xmax-xmin))**2 + ((y[msk]-cy)/(ymax-ymin))**2
+                if which == 'xy':
+                    dist = ((x[msk]-cx)/(xmax-xmin))**2 + ((y[msk]-cy)/(ymax-ymin))**2
+                elif which == 'x':
+                    dist = ((x[msk]-cx)/(xmax-xmin))**2
+                elif which == 'y':
+                    dist = ((y[msk]-cy)/(ymax-ymin))**2
+                else:
+                    raise ValueError("Value {0} not a valid option for coord2point".format(which))
+
                 ind = np.arange(len(x))[msk][np.argmin(dist)]
 
         return ind
@@ -840,6 +867,91 @@ class PlkWidget(QtGui.QWidget):
             self.updatePlot()
             #print("Index deleted = ", ind)
             #print("Deleted:", self.psr.deleted[ind])
+        elif ukey == ord('+') or ukey == ord('-'):
+            # Add/delete a phase jump
+            jump = 1
+            if ukey == ord('-'):
+                jump = -1
+
+            ind = self.coord2point(xpos, ypos, which='x')
+            self.psr.add_phasejump(self.psr.stoas[ind], jump)
+            self.updatePlot()
+        elif ukey == ord('<'):
+            # Add a data point to the view on the left
+            # TODO: Make this more Pythonic!
+            if self.psr['START'].set and self.psr['START'].fit:
+                start = self.psr['START'].val
+                ltmask = self.psr.stoas < start
+
+                if np.sum(ltmask) > 2:
+                    ltind = np.arange(len(self.psr.stoas))[ltmask]
+                    lttoas = self.psr.stoas[ltmask]
+                    max_ltind = np.argmax(lttoas)
+
+                    # Get maximum of selected TOAs
+                    ltmax = ltind[max_ltind]
+                    start_max = self.psr.stoas[ltmax]
+
+                    # Get second-highest TOA value
+                    ltmask[ltmax] = False
+                    ltind = np.arange(len(self.psr.stoas))[ltmask]
+                    lttoas = self.psr.stoas[ltmask]
+                    max_ltind = np.argmax(lttoas)
+                    ltmax = ltind[max_ltind]
+                    start_max2 = self.psr.stoas[ltmax]
+
+                    # Set the new START value
+                    self.psr['START'].val = 0.5 * (start_max + start_max2)
+                elif np.sum(ltmask) == 2:
+                    idmin = np.argmin(self.psr.stoas)
+                    stmin = self.psr.stoas[idmin]
+                    mask = np.ones(len(self.psr.stoas), dtype=np.bool)
+                    mask[idmin] = False
+                    self.psr['START'].val = 0.5 * \
+                            (np.min(self.psr.stoas[mask]) + stmin)
+                elif np.sum(ltmask) == 1:
+                    self.psr['START'].val = np.min(self.psr.stoas) - 1
+                elif np.sum(ltmask) == 0:
+                    pass
+                self.updatePlot()
+        elif ukey == ord('>'):
+            # Add a data point to the view on the left
+            # TODO: Make this more Pythonic!
+            if self.psr['FINISH'].set and self.psr['FINISH'].fit:
+                start = self.psr['FINISH'].val
+                gtmask = self.psr.stoas > start
+
+                if np.sum(gtmask) > 2:
+                    gtind = np.arange(len(self.psr.stoas))[gtmask]
+                    gttoas = self.psr.stoas[gtmask]
+                    min_gtind = np.argmin(gttoas)
+
+                    # Get maximum of selected TOAs
+                    gtmin = gtind[min_gtind]
+                    start_min = self.psr.stoas[gtmin]
+
+                    # Get second-highest TOA value
+                    gtmask[gtmin] = False
+                    gtind = np.arange(len(self.psr.stoas))[gtmask]
+                    gttoas = self.psr.stoas[gtmask]
+                    min_gtind = np.argmin(gttoas)
+                    gtmin = gtind[min_gtind]
+                    start_min2 = self.psr.stoas[gtmin]
+
+                    # Set the new FINISH value
+                    self.psr['FINISH'].val = 0.5 * (start_min + start_min2)
+                elif np.sum(gtmask) == 2:
+                    idmax = np.argmax(self.psr.stoas)
+                    stmax = self.psr.stoas[idmax]
+                    mask = np.ones(len(self.psr.stoas), dtype=np.bool)
+                    mask[idmax] = False
+                    self.psr['FINISH'].val = 0.5 * \
+                            (np.max(self.psr.stoas[mask]) + stmax)
+                elif np.sum(gtmask) == 1:
+                    self.psr['FINISH'].val = np.max(self.psr.stoas) + 1
+                elif np.sum(gtmask) == 0:
+                    pass
+                self.updatePlot()
         elif ukey == ord('x'):
             # Re-do the fit, using post-fit values of the parameters
             self.reFit()
