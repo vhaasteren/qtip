@@ -54,10 +54,16 @@ class BinaryWidget(QtGui.QWidget):
     def initBin(self):
         self.setMinimumSize(650, 550)
 
-        self.binarybox = QtGui.QVBoxLayout()                       # binarybox contains the whole plk widget
-        #self.xyplotbox = QtGui.QHBoxLayout()                    # plkbox contains the whole plk widget
-        #self.fitboxesWidget = BinFitboxesWidget(parent=self)    # Contains all the checkboxes
+        self.binarybox = QtGui.QVBoxLayout()                    # whole widget
+        self.modelbox = QtGui.QHBoxLayout()                     # model widget
+        self.modelWidget = QtGui.QWidget()                      # model widget
+
         #self.actionsWidget = BinActionsWidget(parent=self)
+
+        self.binaryModelCB = QtGui.QComboBox()
+        self.binaryModelCB.addItem('DD')
+        self.binaryModelCB.addItem('T2')
+        self.binaryModelCB.addItem('ELL')
 
         # We are creating the Figure here, so set the color scheme appropriately
         self.setColorScheme(True)
@@ -99,6 +105,26 @@ class BinaryWidget(QtGui.QWidget):
         self.fitboxVisible = True
         self.actionsVisible = True
         self.layoutMode = 1         # (0 = none, 1 = all, 2 = only fitboxes, 3 = fit & action)
+
+    def initBinLayout(self):
+        """
+        Initialise the basic layout of this plk emulator emulator
+        """
+        # Initialise the plk box
+        #self.plkbox.addWidget(self.fitboxesWidget)
+        self.modelbox.addWidget(self.binaryModelCB)
+        self.modelbox.addStretch(1)
+        self.modelWidget.setLayout(self.modelbox)
+
+        self.binarybox.addWidget(self.modelWidget)
+
+        #self.xyplotbox.addWidget(self.xyChoiceWidget)
+        self.binarybox.addWidget(self.binCanvas)
+
+        #self.plkbox.addLayout(self.xyplotbox)
+
+        #self.plkbox.addWidget(self.actionsWidget)
+        self.setLayout(self.binarybox)
 
     def setColorScheme(self, start=True):
         """
@@ -177,21 +203,6 @@ class BinaryWidget(QtGui.QWidget):
         TODO: callback not used right now
         """
         pass
-
-    def initBinLayout(self):
-        """
-        Initialise the basic layout of this plk emulator emulator
-        """
-        # Initialise the plk box
-        #self.plkbox.addWidget(self.fitboxesWidget)
-
-        #self.xyplotbox.addWidget(self.xyChoiceWidget)
-        #self.xyplotbox.addWidget(self.binCanvas)
-
-        #self.plkbox.addLayout(self.xyplotbox)
-
-        #self.plkbox.addWidget(self.actionsWidget)
-        self.setLayout(self.binarybox)
 
     def showVisibleWidgets(self):
         """
