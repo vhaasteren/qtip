@@ -766,6 +766,13 @@ class LTPulsar(BasePulsar):
     def add_phasejump(self, mjd, phasejump):
         self._psr.add_phasejump(mjd, phasejump)
 
+    def remove_phasejumps(self):
+        self._psr.remove_phasejumps()
+
+    @property
+    def nphasejumps(self):
+        return self._psr.nphasejumps
+
 
 
 class PPulsar(BasePulsar):

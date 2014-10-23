@@ -801,6 +801,8 @@ class PlkWidget(QtGui.QWidget):
                 modifiers += QtCore.Qt.ShiftModifier
             if 'meta' in fkey:
                 modifiers += QtCore.Qt.MetaModifier
+            if 'backspace' in fkey:
+                ukey = QtCore.Qt.Key_Backspace
 
         #if int(e.modifiers()) == (QtCore.Qt.ControlModifier+QtCore.Qt.AltModifier)
 
@@ -875,6 +877,10 @@ class PlkWidget(QtGui.QWidget):
 
             ind = self.coord2point(xpos, ypos, which='x')
             self.psr.add_phasejump(self.psr.stoas[ind], jump)
+            self.updatePlot()
+        elif ukey == QtCore.Qt.Key_Backspace:
+            # Remove all phase jumps
+            self.psr.remove_phasejumps()
             self.updatePlot()
         elif ukey == ord('<'):
             # Add a data point to the view on the left
