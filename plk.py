@@ -691,33 +691,45 @@ class PlkWidget(QtGui.QWidget):
             yave = 0.5 * (np.max(y) + np.min(y))
             ymin = yave - 1.05 * (yave - np.min(y))
             ymax = yave + 1.05 * (np.max(y) - yave)
-            self.plkAxes.scatter(x, y, marker='.', c='g')
+            self.plkAxes.scatter(x, y, marker='.', color='blue')
         else:
             yave = 0.5 * (np.max(y+yerr) + np.min(y-yerr))
             ymin = yave - 1.05 * (yave - np.min(y-yerr))
             ymax = yave + 1.05 * (np.max(y+yerr) - yave)
-            self.plkAxes.errorbar(x, y, yerr=yerr, fmt='.', color='green')
+            self.plkAxes.errorbar(x, y, yerr=yerr, fmt='.', color='blue')
 
         self.plkAxes.axis([xmin, xmax, ymin, ymax])
         self.plkAxes.get_xaxis().get_major_formatter().set_useOffset(False)
         self.plkAxes.set_xlabel(xlabel)
         self.plkAxes.set_ylabel(ylabel)
-        self.plkAxes.set_title(title)
+        self.plkAxes.set_title(title, y=1.03)
 
     def plotPhaseJumps(self, phasejumps):
         """
         Plot the phase jump lines, if we have any
         """
         xmin, xmax, ymin, ymax = self.plkAxes.axis()
+        dy = 0.01 * (ymax-ymin)
 
         if len(phasejumps) > 0:
             phasejumps = np.array(phasejumps)
 
             for ii in range(len(phasejumps)):
                 if phasejumps[ii,1] != 0:
-                    # TODO: Add the jump size on top of the plot
                     self.plkAxes.vlines(phasejumps[ii,0], ymin, ymax,
                             color='darkred', linestyle='--', linewidth=0.5)
+
+                    if phasejumps[ii,1] < 0:
+                        jstr = str(phasejumps[ii,1])
+                    else:
+                        jstr = '+' + str(phasejumps[ii,1])
+
+                    # Print the jump size above the plot
+                    ann = self.plkAxes.annotate(jstr, \
+                            xy=(phasejumps[ii,0], ymax+dy), xycoords='data', \
+                            annotation_clip=False, color='darkred', \
+                            size=7.0)
+                    
 
     def setFocusToCanvas(self):
         """
