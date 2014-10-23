@@ -469,7 +469,7 @@ class LTPulsar(BasePulsar):
 
         # Some parameters we do not want to add a fitting checkbox for:
         self.nofitboxpars = ['START', 'FINISH', 'POSEPOCH', 'PEPOCH', 'DMEPOCH', \
-            'EPHVER']
+            'EPHVER', 'TZRMJD', 'TZRFRQ', 'TRES']
 
         # The possible binary pulsar parameters
         self.binarypars = ['T0', 'T0_1', 'PB', 'PBDOT', 'PB_1', 'ECC', 'ECC_1', 'OM',
