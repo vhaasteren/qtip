@@ -30,13 +30,12 @@
       <section>
         <h1>A <em>modern</em> graphical interface to pulsar timing packages</h1>
 
-        <p>The most widely used pulsar timing packages, <a href="http://tempo.sourceforge.net/">tempo</a> and <a href="http://tempo2.sourceforge.net/">tempo2</a>, are written in <code>FORTRAN</code> and <code>C++</code>. Programs written in these languages tend to be time-intensive to extend in terms of features. In the case of tempo2, a GUI is available in some plugins through the old <code>PgPlot</code> library.
+        <p>
+        Qtip is an interactive environment for pulsar timing packages. It aims to contain functionality that is currently provided by interactive 'plugins' such as 'Plk' for <a href="http://tempo2.sourceforge.net/">tempo2</a>, while allowing for direct access to the powerful Python shell in which all the pulsar objects are available. Ever found yourself wanting to do something simple with <a href="http://tempo.sourceforge.net/">tempo</a> or tempo2, only to find yourself programming for half a day? Ever found yourself in pain because of the old PgPlot library? Or have you ever accidentally lost work because there is no 'undo' button in plk? Qtip might just be what you have always wanted!
         </p>
 
-        <p><code>Qtip</code> aims to bring the functionality of tempo and tempo2 into the modern age, by using <code>Qt</code> and <code>IPython</code>. The package currently relies on <a href="http://vallis.github.io/libstempo/">libstempo</a> as its timing engine, so the solutions are identical to when you are using tempo2 directly. Support for <a href="https://github.com/nanograv/PINT">PINT</a> is being added as PINT progresses in development.
-        </p>
-
-        <p> <code>Qtip</code> is designed for scientist. Scientists don't want a ready-made program that solves a problem. They don't want to just push a button. They want to fiddle with stuff. They want to do things the programmer has not thought of. Qtip tries to accommodate these needs by providing a full IPython interface alongside a graphical interface. Solve for a pulsar using the <code>Plk</code> emulator, while retaining direct access to the libstempo object at all times. This approach allows one to be much more productive when solving pulsars!
+        <p>
+        Recently, many pulsar timing tools have been developed in Python. <a href="http://vallis.github.io/libstempo/">Libstempo</a> can be used to access tempo2 from within Python, and <a href="https://github.com/nanograv/PINT">PINT</a> is well underway in becoming a full timing package developed from scratch. Qtip aims to be the standard interface for these packages. Its GUI is developed in (Py)Qt, and emulates the behavior of the plk tempo2 plugin. If you know how to use Plk, you can use Qtip. But Qtip is more. It contains a full IPython console, which gives direct access to the PINT/libstempo objects. And it can easily be extended to include other Widgets.
         </p>
 
         <h1>DISCLAIMER</h1>
