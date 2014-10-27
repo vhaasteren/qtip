@@ -29,7 +29,8 @@ import matplotlib
 import qtpulsar as qp
 import constants
 
-from plk import *
+from opensomething import OpenSomethingWidget
+from plk import PlkWidget
 from binary import BinaryWidget
 
 # The startup banner
@@ -46,55 +47,6 @@ object?   -> Details about 'object', use 'object??' for extra details.
 import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp
 """
 
-
-class PiccardWidget(QtGui.QWidget):
-    """
-    The Piccard main window (Not yet implemented)
-    """
-    def __init__(self, parent=None, **kwargs):
-        super(PiccardWidget, self).__init__(parent, **kwargs)
-
-        self.parent = parent
-
-        self.initPiccard()
-
-    def initPiccard(self):
-        print("Hello, Piccard!")
-
-class OpenSomethingWidget(QtGui.QWidget):
-    """
-    The open-something Widget. First shown in the main window, if it is not
-    started with a command to open any file to begin with. This way, we don't
-    have to show an empty graph
-    """
-    def __init__(self, parent=None, openFile=None, **kwargs):
-        super(OpenSomethingWidget, self).__init__(parent, **kwargs)
-
-        self.parent = parent
-        self.openFileFn = openFile
-
-        self.initOSWidget()
-
-    def initOSWidget(self):
-        """
-        Initialise the widget with a button and a label
-        """
-        self.vbox = QtGui.QVBoxLayout()
-
-        button = QtGui.QPushButton("Open a file...")
-        button.clicked.connect(self.openFile)
-        self.vbox.addWidget(button)
-
-        self.setLayout(self.vbox)
-
-    def openFile(self):
-        """
-        Display the open file dialog, and send the parent window the order to
-        open the file
-        """
-        if not self.openFileFn is None:
-            filename = QtGui.QFileDialog.getOpenFileName(self, 'Open file', '~/')
-            self.openFileFn(filename)
 
 
 
@@ -128,16 +80,17 @@ class QtipWindow(QtGui.QMainWindow):
         self.setQtipLayout(whichWidget='opensomething',
                 showIPython=False, firsttime=True)
 
-        # We are still in MAJOR testing mode, so open a test-pulsar right away
-        # (delete this line when going into production)
-        if parfile is None or timfile is None:
-            testpulsar = True
-        else:
-            testpulsar = False
+        if False:
+            # We are still in MAJOR testing mode, so open a test-pulsar right away
+            # (delete this line when going into production)
+            if parfile is None or timfile is None:
+                testpulsar = True
+            else:
+                testpulsar = False
 
-        # Are we going to open plk straight away?
-        self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
-                timfilename=timfile, engine=engine)
+            # Are we going to open plk straight away?
+            self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
+                    timfilename=timfile, engine=engine)
 
         self.show()
 
@@ -281,8 +234,9 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Create the OpenSomething widget. Do not add it to the layout yet
 
-        TODO:   probably should use a signal to implement this call instead of
-                openParTim
+        TODO:   This widget will become the first main widget to see. At the
+                moment, however, we're avoiding it for the sake of testing
+                purposes
         """
         self.openSomethingWidget = OpenSomethingWidget(parent=self.mainFrame, \
                 openFile=self.requestOpenPlk)
