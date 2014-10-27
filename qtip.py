@@ -59,7 +59,7 @@ class QtipWindow(QtGui.QMainWindow):
     """
     
     def __init__(self, parent=None, engine='libstempo', \
-            parfile=None, timfile=None, **kwargs):
+            parfile=None, timfile=None, perfile=None, **kwargs):
         super(QtipWindow, self).__init__(parent)
         self.setWindowTitle('QtIpython interface to Piccard/libstempo')
         
@@ -77,7 +77,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Position the widgets
         self.initQtipLayout()
-        self.setQtipLayout(whichWidget='opensomething',
+        self.setQtipLayout(whichWidget='binary',
                 showIPython=False, firsttime=True)
 
         if False:
@@ -425,8 +425,6 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Open a par-file and a tim-file
         """
-        print("openParTim called with {0}".format(filename))
-
         # Ask the user for a par and tim file, and open these with libstempo
         if isinstance(filename, str):
             parfilename = filename
@@ -558,6 +556,9 @@ def main():
     parser.add_option('-f', '--file', action='store', type='string', nargs=2, \
             default=(None, None), help="Provide a parfile and a timfile")
 
+    parser.add_option('-p', '--periodfile', action='store', type='string', nargs=1, \
+            default=(None, None), help="Provide a period file (per)")
+
     parser.add_option('-e', '--engine', action='store', type='string', nargs=1, \
             default='libstempo', \
             help="Pulsar timing engine: libstempo/pint/piccard")
@@ -569,7 +570,8 @@ def main():
 
     # Create the window, and start the application
     qtipwin = QtipWindow(engine=options.engine, \
-            parfile=options.file[0], timfile=options.file[1])
+            parfile=options.file[0], timfile=options.file[1],\
+            perfile=options.periodfile[0])
     qtipwin.raise_()        # Required on OSX to move the app to the foreground
     sys.exit(app.exec_())
 

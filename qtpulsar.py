@@ -63,14 +63,12 @@ try:
     import pint.models as tm
     from pint.phase import Phase
     from pint import toa
-    #import pint_temp
     print("PINT available")
     have_pint = True
 except ImportError:
     tm = None
     Phase = None
     toa = None
-    #pint_temp = None
     print("PINT not available")
     have_pint = False
 
