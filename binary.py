@@ -55,6 +55,11 @@ C           = float('2.99792458e8')
 
 PARAMS = ['RA', 'DEC', 'P0', 'P1', 'PEPOCH', 'PB', 'ECC', 'A1', 'T0', 'OM']
 
+# "00:00:00.0"
+# regexp = QtCore.QRegExp('^([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])$')
+RAREGEXP = "^(([01][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
+DECREGEXP = "^((-?[0-8][0-9]|90):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
+
 
 # Declarations for MENU
 """
@@ -317,9 +322,40 @@ class BinaryWidget(QtGui.QWidget):
                             ii, offset, 1, cblength)
 
                     # TODO: Figure out how to properly set an edit field
-                    #textedit = QtGui.QTextEdit("", parent=self)
-                    #self.parameterbox.addWidget(textedit, \
-                    #        ii, offset+cblength, 1, inplength)
+                    # TODO: For RA & DEC make a custom validator
+                    lineedit = QtGui.QLineEdit("", parent=self)
+                    if PARAMS[index] == 'RA':
+                        regexp = QtCore.QRegExp(RAREGEXP)
+                        validator = QtGui.QRegExpValidator(regexp)
+                    elif PARAMS[index] == 'DEC':
+                        regexp = QtCore.QRegExp(DECREGEXP)
+                        validator = QtGui.QRegExpValidator(regexp)
+                    else:
+                        validator = QtGui.QDoubleValidator()
+                    lineedit.setValidator(validator)
+                    self.parameterbox.addWidget(lineedit, \
+                            ii, offset+cblength, 1, inplength)
+
+                    """
+                    # Together with the textChanged signal, we can even set the
+                    # background color of the line edit as feedback to the user.
+                    # Especially handy with RA & DEC. Send the signal manually
+                    # here as well, with:
+                    # lineedit.textChanged.connect(self.check_state)
+                    # lineedit.textChanged.emit(lineedit.text())
+
+                    def check_state(self, *args, **kwargs):
+                        sender = self.sender()
+                        validator = sender.validator()
+                        state = validator.validate(sender.text(), 0)[0]
+                        if state == QtGui.QValidator.Acceptable:
+                            color = '#c4df9b' # green
+                        elif state == QtGui.QValidator.Intermediate:
+                            color = '#fff79a' # yellow
+                        else:
+                            color = '#f6989d' # red
+                        sender.setStyleSheet('QLineEdit { background-color: %s }' % color)
+                    """
 
                     # TODO: Make callback functions for when these change
                     index += 1
