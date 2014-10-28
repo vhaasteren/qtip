@@ -252,7 +252,11 @@ class BinaryWidget(QtGui.QWidget):
         super(BinaryWidget, self).__init__(parent, **kwargs)
 
         self.initBin()
+        self.init_param_file()
+        self.openPulsar(parfilename, perfilename)
+        self.updatePlot()
 
+        self.psrLoaded = False
         self.psr = None
         self.parent = parent
 
@@ -312,9 +316,10 @@ class BinaryWidget(QtGui.QWidget):
                     self.parameterbox.addWidget(checkbox, \
                             ii, offset, 1, cblength)
 
-                    textedit = QtGui.QTextEdit("", parent=self)
-                    self.parameterbox.addWidget(textedit, \
-                            ii, offset+cblength, 1, inplength)
+                    # TODO: Figure out how to properly set an edit field
+                    #textedit = QtGui.QTextEdit("", parent=self)
+                    #self.parameterbox.addWidget(textedit, \
+                    #        ii, offset+cblength, 1, inplength)
 
                     # TODO: Make callback functions for when these change
                     index += 1
@@ -355,8 +360,7 @@ class BinaryWidget(QtGui.QWidget):
         #self.mpl_toolbar = NavigationToolbar(self.canvas, self.main_frame)
 
         # Add the figure to the in/output Layout/Widget
-        #self.inoutputbox.addStretch(1)
-        #self.inoutputbox.addWidget(self.binCanvas)
+        self.inoutputbox.addWidget(self.binCanvas)
         self.fullwidgetbox.addLayout(self.inoutputbox)
         self.setLayout(self.fullwidgetbox)
 
@@ -406,7 +410,7 @@ class BinaryWidget(QtGui.QWidget):
         self.binCanvas.draw()
         self.setColorScheme(False)
 
-    def init_param_file():
+    def init_param_file(self):
         """
         Init parameters of PARFILE
              fit_flag[] : which parameters to fit
@@ -436,7 +440,7 @@ class BinaryWidget(QtGui.QWidget):
         for i in range(len(self.p2f)):
             self.fit_flag.append(0)
 
-    def openPulsar(self, perfilename=None, parfilename=None):
+    def openPulsar(self, parfilename=None, perfilename=None):
         """
         Open a per/par file.
 
@@ -486,6 +490,8 @@ class BinaryWidget(QtGui.QWidget):
         if perfilename is None or parfilename is None:
             os.remove(tperfilename)
             os.remove(tparfilename)
+
+        self.psrLoaded = True
 
     def write_param_file(self):
         for PARAM in PARAMS:
@@ -657,20 +663,31 @@ class BinaryWidget(QtGui.QWidget):
         self.plot_model()
         """
 
+        if self.psrLoaded:
+            pass
 
 
-    def newFitParameters(self):
-        """
-        This function is called when we have new fitparameters
 
-        TODO: callback not used right now
-        """
-        pass
+
+
+
+
 
 
     def updatePlot(self):
         """
         Update the plot/figure
+        """
+        self.setColorScheme(True)
+        self.binAxes.clear()
+        self.binAxes.grid(True)
+
+        self.binAxes.plot(self.mjds, self.periods, 'r+', ms=9)
+
+        self.binCanvas.draw()
+        self.setColorScheme(False)
+
+
         """
         if self.psr is not None:
             # Get a mask for the plotting points
@@ -698,6 +715,7 @@ class BinaryWidget(QtGui.QWidget):
                 self.updatePlotL(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
             else:
                 raise ValueError("Nothing to plot!")
+        """
 
 
     def updatePlotL(self, x, y, yerr, xlabel, ylabel, title):
