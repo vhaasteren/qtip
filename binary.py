@@ -56,7 +56,6 @@ C           = float('2.99792458e8')
 PARAMS = ['RA', 'DEC', 'P0', 'P1', 'PEPOCH', 'PB', 'ECC', 'A1', 'T0', 'OM']
 
 # "00:00:00.0"
-# regexp = QtCore.QRegExp('^([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])$')
 RAREGEXP = "^(([01][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
 DECREGEXP = "^((-?[0-8][0-9]|90):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
 
@@ -259,6 +258,7 @@ class BinaryWidget(QtGui.QWidget):
         self.initBin()
         self.init_param_file()
         self.openPulsar(parfilename, perfilename)
+        self.fillModelPars()
         self.updatePlot()
 
         self.psrLoaded = False
@@ -272,8 +272,8 @@ class BinaryWidget(QtGui.QWidget):
         self.numpars = len(PARAMS)
         self.parameterCols = 2
         self.parameterRows = int(np.ceil(self.numpars / self.parameterCols))
-        cblength = 10
-        inplength = 15
+        cblength = 6
+        inplength = 20
 
         self.setMinimumSize(650, 550)
 
@@ -285,6 +285,7 @@ class BinaryWidget(QtGui.QWidget):
 
         # The binaryModel Combobox Widget
         self.binaryModelCB = QtGui.QComboBox()
+        self.binaryModelCB.addItem('BT')
         self.binaryModelCB.addItem('DD')
         self.binaryModelCB.addItem('T2')
         self.binaryModelCB.addItem('ELL')
@@ -311,6 +312,7 @@ class BinaryWidget(QtGui.QWidget):
 
         # Add all the parameters
         index = 0
+        self.parameterbox_pw = []
         for ii in range(self.parameterRows):
             for jj in range(self.parameterCols):
                 if index < self.numpars:
@@ -322,7 +324,6 @@ class BinaryWidget(QtGui.QWidget):
                             ii, offset, 1, cblength)
 
                     # TODO: Figure out how to properly set an edit field
-                    # TODO: For RA & DEC make a custom validator
                     lineedit = QtGui.QLineEdit("", parent=self)
                     if PARAMS[index] == 'RA':
                         regexp = QtCore.QRegExp(RAREGEXP)
@@ -333,32 +334,20 @@ class BinaryWidget(QtGui.QWidget):
                     else:
                         validator = QtGui.QDoubleValidator()
                     lineedit.setValidator(validator)
+                    lineedit.textChanged.connect(self.changedPars)
                     self.parameterbox.addWidget(lineedit, \
                             ii, offset+cblength, 1, inplength)
 
-                    """
-                    # Together with the textChanged signal, we can even set the
-                    # background color of the line edit as feedback to the user.
-                    # Especially handy with RA & DEC. Send the signal manually
-                    # here as well, with:
-                    # lineedit.textChanged.connect(self.check_state)
-                    # lineedit.textChanged.emit(lineedit.text())
+                    # Send the textChanged signal for the color update
+                    lineedit.textChanged.emit(lineedit.text())
 
-                    def check_state(self, *args, **kwargs):
-                        sender = self.sender()
-                        validator = sender.validator()
-                        state = validator.validate(sender.text(), 0)[0]
-                        if state == QtGui.QValidator.Acceptable:
-                            color = '#c4df9b' # green
-                        elif state == QtGui.QValidator.Intermediate:
-                            color = '#fff79a' # yellow
-                        else:
-                            color = '#f6989d' # red
-                        sender.setStyleSheet('QLineEdit { background-color: %s }' % color)
-                    """
+                    # Save the widgets for later reference
+                    self.parameterbox_pw.append(\
+                            dict({'checkbox':checkbox, 'lineedit':lineedit}))
 
                     # TODO: Make callback functions for when these change
                     index += 1
+
 
         # Finalize the parameter Widget
         self.inoutputbox.addLayout(self.parameterbox)
@@ -529,6 +518,43 @@ class BinaryWidget(QtGui.QWidget):
 
         self.psrLoaded = True
 
+    def fillModelPars(self):
+        """
+        When we have read a new pulsar/model, we need to propagate the newly
+        read parameters back to the input field. That's what we do here.
+        """
+        for pw in self.parameterbox_pw:
+            pid = pw['checkbox'].text()
+
+            if pid in self.p2f:
+                pw['lineedit'].setText(str(self.p2f[pid].val))
+
+    def getModelPars(self):
+        """
+        Obtain the binary model parameters from the input fields. If they all
+        pass the validator tests, we propagate these values into the parameter
+        dictionary
+        """
+        all_ok = True
+        for pw in self.parameterbox_pw:
+            # Check the validators first
+            validator = pw['lineedit'].validator()
+            if validator.validate(pw['lineedit'].text(), 0)[0] != QtGui.QValidator.Acceptable:
+                all_ok = False
+
+        if all_ok:
+            for pw in self.parameterbox_pw:
+                pid = pw['checkbox'].text()
+
+                if pid in self.p2f:
+                    #print("{0} = {1}".format(pid, pw['lineedit'].text()))
+                    self.p2f[pid].val = pw['lineedit'].text()
+                else:
+                    # Add the parameter, so do some extra stuff?
+                    pass
+        
+
+
     def write_param_file(self):
         for PARAM in PARAMS:
             self.param.set_param(PARAM, self.p2f[PARAM].val)
@@ -605,19 +631,27 @@ class BinaryWidget(QtGui.QWidget):
         """
         pass
 
+    def changedPars(self, *args, **kwargs):
+        """
+        Called when we have changed the parameters of the binary model
+        """
+        sender = self.sender()
+        validator = sender.validator()
+        state = validator.validate(sender.text(), 0)[0]
+        if state == QtGui.QValidator.Acceptable:
+            color = '#c4df9b' # green
+        elif state == QtGui.QValidator.Intermediate:
+            color = '#fff79a' # yellow
+        else:
+            color = '#f6989d' # red
+        sender.setStyleSheet('QLineEdit { background-color: %s }' % color)
 
     def fitModel(self, widget=None):
         """
         Function to perform the fit of selected parameters to the values
         """
-        self.setColorScheme(True)
-        self.binAxes.clear()
-        self.binAxes.grid(True)
+        self.getModelPars()
 
-        self.binAxes.plot([1, 2], [1, 2])
-
-        self.binCanvas.draw()
-        self.setColorScheme(False)
         
         """
         # Retrieve values of parameters
@@ -724,39 +758,11 @@ class BinaryWidget(QtGui.QWidget):
         self.setColorScheme(False)
 
 
-        """
-        if self.psr is not None:
-            # Get a mask for the plotting points
-            msk = self.psr.mask('plot')
-
-            #print("Mask has {0} toas".format(np.sum(msk)))
-
-            # Get the IDs of the X and Y axis
-            #xid, yid = self.xyChoiceWidget.plotids()
-            xid, yid = 'MJD', 'post-fit'
-
-            # Retrieve the data
-            x, xerr, xlabel = self.psr.data_from_label(xid)
-            y, yerr, ylabel = self.psr.data_from_label(yid)
-
-            if x is not None and y is not None and np.sum(msk) > 0:
-                xp = x[msk]
-                yp = y[msk]
-
-                if yerr is not None:
-                    yerrp = yerr[msk]
-                else:
-                    yerrp = None
-
-                self.updatePlotL(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
-            else:
-                raise ValueError("Nothing to plot!")
-        """
-
-
     def updatePlotL(self, x, y, yerr, xlabel, ylabel, title):
         """
         Update the plot, given all the plotting info
+
+        OLD: for plk
         """
         self.setColorScheme(True)
         self.binAxes.clear()

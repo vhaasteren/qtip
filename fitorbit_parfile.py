@@ -71,11 +71,11 @@ class Parfile:
         setattr(self,'EPHEM','')
         setattr(self,'BINARY',"BT")
 
-	use_eclip = False # Use ecliptic coordinates
-	use_ell = False # Use elliptic coordinates
+        use_eclip = False # Use ecliptic coordinates
+        use_ell = False # Use elliptic coordinates
 
-	if parfile:
-	    self.read(parfile)
+        if parfile:
+            self.read(parfile)
 
     def __str__(self):
         out = ""
@@ -85,7 +85,7 @@ class Parfile:
                     out += "%10s = '%s'\n" % (k, v)
                 else:
                     out += "%10s = %-20.15g\n" % (k, v)
-	return out	    
+        return out            
 
     def read(self, parfilenm):
         self.FILE = parfilenm
@@ -94,7 +94,7 @@ class Parfile:
             # Convert any 'D-' or 'D+' to 'E-' or 'E+'
             line = line.replace("D-", "E-")
             line = line.replace("D+", "E+")
-	    try:
+            try:
               splitline = line.split()
               key = splitline[0]
               if key in str_keys:
@@ -109,20 +109,20 @@ class Parfile:
                     setattr(self, key+'_ERR', float(splitline[2]))
               if len(splitline)==4:
                 setattr(self, key+'_ERR', float(splitline[3]))
-	    except:
-	      print ''
-	# Read PSR name      
+            except:
+              print ''
+        # Read PSR name      
         if hasattr(self, 'PSR'):
             setattr(self, 'PSR', self.PSR)
         if hasattr(self, 'PSRJ'):
             setattr(self, 'PSRJ', self.PSRJ)
         # Deal with Ecliptic coords
         if (hasattr(self, 'BETA') and hasattr(self, 'LAMBDA')):
-	    self.use_eclip = True
+            self.use_eclip = True
             setattr(self, 'ELAT', self.BETA)
             setattr(self, 'ELONG', self.LAMBDA)
         if (slalib and hasattr(self, 'ELAT') and hasattr(self, 'ELONG')):
-	    self.use_eclip = True
+            self.use_eclip = True
             if hasattr(self, 'POSEPOCH'):
                 epoch = self.POSEPOCH
             else:
@@ -186,7 +186,7 @@ class Parfile:
         if hasattr(self, 'DM'):
             setattr(self, 'DM', self.DM)
         if hasattr(self, 'EPS1') and hasattr(self, 'EPS2'):
-	    self.use_ell = True
+            self.use_ell = True
             ecc = math.sqrt(self.EPS1 * self.EPS1 + self.EPS2 * self.EPS2)
             omega = math.atan2(self.EPS1, self.EPS2)
             setattr(self, 'ECC', ecc)
@@ -198,18 +198,18 @@ class Parfile:
     def write(self, parfilenm):
 #    def write(self, parfilenm, p2f, param):
         out = ""
-	for k in par_keys:
-	    if hasattr(self, k):
-	        v = self.__dict__[k]
+        for k in par_keys:
+            if hasattr(self, k):
+                v = self.__dict__[k]
                 if type(self.__dict__[k]) is StringType:
                     out += "%s %27s\n" % (k, v)
                 else:
                     out += "%-12s%20.15g\n" % (k, v)
-	print out	    
+        print out            
 
         pfo = open(parfilenm,'w')
-	pfo.write(out)
-	pfo.close()
+        pfo.write(out)
+        pfo.close()
 
     def set_param(self, param, value):
         setattr(self, param, value)
