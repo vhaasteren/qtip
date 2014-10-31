@@ -29,6 +29,9 @@ import copy
 # For date conversions
 import jdcal        # pip install jdcal
 
+# For angle conversions
+import ephem        # pip install pyephem
+
 import constants
 import qtpulsar as qp
 import tempfile
@@ -560,9 +563,38 @@ class BinaryWidget(QtGui.QWidget):
             self.param.set_param(PARAM, self.p2f[PARAM].val)
 
 
-    def plot_model(self, widget=None):
+    def plotModel(self, widget=None):
         """
+        Plot the best-fit binary model
+        """
+        xs=np.linspace(min(self.mjds), max(self.mjds), 2000)
+        ys=np.asarray(calc_period(xs, 0.0, 0.0, \
+                np.float128(self.p2f['P0'].val), \
+                np.float128(self.p2f['P1'].val), \
+                np.float128(self.p2f['PEPOCH'].val), \
+                np.float128(self.p2f['PB'].val), \
+                np.float128(self.p2f['ECC'].val), \
+                np.float128(self.p2f['A1'].val), \
+                np.float128(self.p2f['T0'].val), \
+                np.float128(self.p2f['OM'].val), \
+                np.float128(ephem.hours(str(self.p2f['RA'].val))), \
+                np.float128(ephem.degrees(str(self.p2f['DEC'].val)))))
+        
+        # Redraw plot
+        #self.ax1.cla()
+        #self.ax1.plot(self.mjds,self.periods,'r+',ms=9)
+        #line, = self.ax1.plot(xs, ys)
+        self.setColorScheme(True)
+        self.binAxes.clear()
+        self.binAxes.grid(True)
+        self.binAxes.set_xlabel('MJD')
+        #self.binAxes.plot(self.mjds, self.periods, 'r+', ms=9)
+        self.binAxes.plot(xs, ys, 'b-')
+        self.binAxes.set_ylabel('Period ($\mu$s)')
+        self.binCanvas.draw()
+        self.setColorScheme(False)
 
+        """
         # Retrieve values from the query
         for i in range(len(self.p2f)):
             #print self.label[i]
@@ -629,7 +661,11 @@ class BinaryWidget(QtGui.QWidget):
         """
         Called when we change the state of the PlotModel checkbox.
         """
-        pass
+        if bool(self.plotCheckBox.checkState()):
+            self.getModelPars()
+            self.plotModel()
+        else:
+            self.updatePlot()
 
     def changedPars(self, *args, **kwargs):
         """
@@ -650,7 +686,7 @@ class BinaryWidget(QtGui.QWidget):
         """
         Function to perform the fit of selected parameters to the values
         """
-        self.getModelPars()
+        pass
 
         
         """
@@ -730,15 +766,8 @@ class BinaryWidget(QtGui.QWidget):
                 self.local_entry[i].set_text(str(plsq[0]))
 
         # Update the plot
-        self.plot_model()
+        self.plotModel()
         """
-
-        if self.psrLoaded:
-            pass
-
-
-
-
 
 
 
