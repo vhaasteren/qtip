@@ -80,7 +80,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.setQtipLayout(whichWidget='opensomething',
                 showIPython=False, firsttime=True)
 
-        if False:
+        if True:
             # We are still in MAJOR testing mode, so open a test-pulsar right away
             # (delete this line when going into production)
             if parfile is None or timfile is None:
