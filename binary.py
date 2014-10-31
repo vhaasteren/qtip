@@ -157,66 +157,66 @@ def resid_period(param, Pobs, x, fit, fixed_values):
 
 
     # DRA 
-    if fit[0]!=0:
+    if fit[0]:
         nb_fit+=1
     DRA = 0.0 
 
     # DDEC
-    if fit[1]!=0:
+    if fit[1]:
         nb_fit+=1
     DDEC = 0.0 
 
     # P0
-    if fit[2]!=0:
+    if fit[2]:
         P0 = param[nb_fit]
         nb_fit+=1
     else:
         P0 = fixed_values[2]
 
     # P1
-    if fit[3]!=0:
+    if fit[3]:
         P1 = param[nb_fit]
         nb_fit +=1
     else:
         P1 = fixed_values[3]
 
     # PEPOCH
-    if fit[4]!=0:
+    if fit[4]:
         PEPOCH = param[nb_fit]
         nb_fit +=1
     else:
         PEPOCH = fixed_values[4] 
 
     # PB
-    if fit[5]!=0:
+    if fit[5]:
         PB = param[nb_fit]
         nb_fit +=1
     else:
         PB = fixed_values[5]
 
     # ECC
-    if fit[6]!=0:
+    if fit[6]:
         ECC = param[nb_fit]
         nb_fit +=1
     else:
         ECC = fixed_values[6]
 
     # A1
-    if fit[7]!=0:
+    if fit[7]:
         A1 = param[nb_fit]
         nb_fit +=1
     else:
         A1 = fixed_values[7]
 
     # T0
-    if fit[8]!=0:
+    if fit[8]:
         T0 = param[nb_fit]
         nb_fit +=1
     else:
         T0 = fixed_values[8]
 
     # A1
-    if fit[9]!=0:
+    if fit[9]:
         OM = param[nb_fit]
         nb_fit +=1
     else:
@@ -434,7 +434,8 @@ class BinaryWidget(QtGui.QWidget):
         self.binAxes.clear()
         self.binAxes.grid(True)
         self.binAxes.set_xlabel('MJD')
-        self.binAxes.set_ylabel('Period ($\mu$s)')
+        self.binAxes.set_ylabel('Pulse period ($\mu$s)')
+        self.binAxes.yaxis.labelpad = -1
         self.binCanvas.draw()
         self.setColorScheme(False)
 
@@ -482,7 +483,9 @@ class BinaryWidget(QtGui.QWidget):
             tperfile = open(tperfilename, 'w')
             tparfile = open(tparfilename, 'w')
             tperfile.write(constants.J1903PER)
+            #tperfile.write(constants.J1756PER)
             tparfile.write(constants.J1903EPH)
+            #tparfile.write(constants.J1756EPH)
             tperfile.close()
             tparfile.close()
         else:
@@ -508,7 +511,7 @@ class BinaryWidget(QtGui.QWidget):
 
         # if flgfreq self.periods=1.0/self.periods
         # if flgms:
-        if False:
+        if True:
             pass
         else:
             # Give pulse period in milliseconds
@@ -581,75 +584,19 @@ class BinaryWidget(QtGui.QWidget):
                 np.float128(ephem.degrees(str(self.p2f['DEC'].val)))))
         
         # Redraw plot
-        #self.ax1.cla()
-        #self.ax1.plot(self.mjds,self.periods,'r+',ms=9)
-        #line, = self.ax1.plot(xs, ys)
         self.setColorScheme(True)
         self.binAxes.clear()
         self.binAxes.grid(True)
+        self.binAxes.get_yaxis().get_major_formatter().set_useOffset(False)
         self.binAxes.set_xlabel('MJD')
-        #self.binAxes.plot(self.mjds, self.periods, 'r+', ms=9)
-        self.binAxes.plot(xs, ys, 'b-')
-        self.binAxes.set_ylabel('Period ($\mu$s)')
+        self.binAxes.plot(xs, ys, 'r-')
+        self.binAxes.scatter(self.mjds, self.periods, \
+                c='darkred', marker='.', s=50)
+        self.binAxes.set_ylabel('Pulse period ($\mu$s)')
+        self.binAxes.yaxis.labelpad = -1
         self.binCanvas.draw()
         self.setColorScheme(False)
 
-        """
-        # Retrieve values from the query
-        for i in range(len(self.p2f)):
-            #print self.label[i]
-            if self.label[i]=='RA':
-                raj_entry = self.local_entry[i].get_text().split(':')
-                ra_radian = 0.0
-                if len(raj_entry) > 1:
-                    # Entry in HH:MM:SS
-                    (rah,ram,ras) = raj_entry
-                    (ra_radian,flag) = slalib.sla_dtf2r(rah,ram,ras)
-                else:
-                    # Entry in radians
-                    ra_radian = float(raj_entry[0])
-
-                self.p2f[self.label[i]].val = ra_radian 
-
-            elif self.label[i]=='DEC':
-                decj_entry = self.local_entry[i].get_text().split(':')
-                dec_radian = 0.0
-                if len(decj_entry) > 1:
-                    # Entry in HH:MM:SS
-                    (dech,decm,decs) = decj_entry
-                    (dec_radian,flag) = slalib.sla_dtf2r(dech,decm,decs)
-                else:
-                    # Entry in radians
-                    dec_radian = float(decj_entry[0])
-
-                self.p2f[self.label[i]].val = dec_radian 
-            else:
-                self.p2f[self.label[i]].val = float(self.local_entry[i].get_text())
-                #print i, self.label[i], self.p2f[self.label[i]].val, self.local_entry[i].get_text()
-          
-        # Init arrays
-        xs=np.linspace(min(self.mjds),max(self.mjds),2000)
-
-
-        ys=calc_period(xs, 0.0, 0.0, self.p2f['P0'].val, self.p2f['P1'].val, self.p2f['PEPOCH'].val, self.p2f['PB'].val, self.p2f['ECC'].val, self.p2f['A1'].val, self.p2f['T0'].val, self.p2f['OM'].val, self.p2f['RA'].val, self.p2f['DEC'].val) 
-
-        
-        # Convert into a Numpy array
-        ys=np.asarray(ys)
-
-        # Redraw plot
-        self.ax1.cla()
-        self.ax1.plot(self.mjds,self.periods,'r+',ms=9)
-        line, = self.ax1.plot(xs, ys)
-
-        # Label and axis
-        self.ax1.set_xlabel(self.xlabel)
-        self.ax1.set_ylabel(self.ylabel)
-        self.ax1.xaxis.set_major_formatter(ScalarFormatter(useOffset=False))
-        self.ax1.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
-
-        self.canvas.draw()
-        """
 
     def changedBinaryModel(self):
         """
@@ -686,7 +633,43 @@ class BinaryWidget(QtGui.QWidget):
         """
         Function to perform the fit of selected parameters to the values
         """
-        pass
+        fit_pars = np.zeros(len(PARAMS), dtype=np.bool)
+        fixedvals = np.zeros(len(PARAMS), dtype=np.float)
+
+        for pw in self.parameterbox_pw:
+            pid = pw['checkbox'].text()
+            fit_pars[PARAMS.index(pid)] = pw['checkbox'].checkState()
+
+        for ii, pid in enumerate(PARAMS):
+            if not pid in ['RA', 'DEC']:
+                fixedvals[ii] = np.float(self.p2f[pid].val)
+            elif pid == 'RA':
+                fixedvals[ii] = np.float(ephem.hours(str(self.p2f['RA'].val)))
+            elif pid == 'DEC':
+                fixedvals[ii] = np.float(ephem.degrees(str(self.p2f['DEC'].val)))
+
+        if np.sum(fit_pars) > 0:
+            # TODO: do the same kind of windowing as in Plk
+            param = np.zeros(np.sum(fit_pars), dtype=np.float)
+            param[:] = fixedvals[fit_pars]
+
+            plsq = leastsq(resid_period, param, args=(self.periods, self.mjds, \
+                    fit_pars, fixedvals))
+            #print('Parameters fitted : {0}'.format(plsq[0]))
+
+            # Place the parameters back in the boxes
+            fixedvals[fit_pars] = plsq[0]
+            for ii, pid in enumerate(PARAMS):
+                if not pid in ['RA', 'DEC']:
+                    self.p2f[pid].val = fixedvals[ii]
+                elif pid == 'RA':
+                    self.p2f[pid].val = str(ephem.hours(fixedvals[ii]))
+                elif pid == 'DEC':
+                    self.p2f[pid].val = str(ephem.degrees(fixedvals[ii]))
+            self.fillModelPars()
+            self.plotModel()
+        else:
+            pass
 
         
         """
@@ -781,8 +764,13 @@ class BinaryWidget(QtGui.QWidget):
         self.binAxes.clear()
         self.binAxes.grid(True)
 
-        self.binAxes.plot(self.mjds, self.periods, 'r+', ms=9)
+        self.binAxes.get_yaxis().get_major_formatter().set_useOffset(False)
+        self.binAxes.scatter(self.mjds, self.periods, \
+                c='darkred', marker='.', s=50)
 
+        self.binAxes.set_xlabel('MJD')
+        self.binAxes.set_ylabel('Pulse period ($\mu$s)')
+        self.binAxes.yaxis.labelpad = -1
         self.binCanvas.draw()
         self.setColorScheme(False)
 
