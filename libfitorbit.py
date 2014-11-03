@@ -14,6 +14,7 @@ import numpy as np
 import os
 import ephem        # pip install pyephem
 
+from utils import eccentric_anomaly
 import fitorbit_parfile as parfile
 
 try:
@@ -25,7 +26,6 @@ except ImportError:
 DEG2RAD    = np.float128('1.7453292519943295769236907684886127134428718885417e-2')
 RAD2DEG    = np.float128('57.295779513082320876798154814105170332405472466564')
 C           = np.float128('2.99792458e8')
-
 
 
 def pardict_to_array(pardict, which='BT'):
@@ -41,18 +41,41 @@ def pardict_to_array(pardict, which='BT'):
         #def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
         #        OM, RA_RAD, DEC_RAD):
         x = np.zeros(12, dtype=np.float128)
-        x[0] np.float128(ephem.hours(str(pardict['RA'].val)))
-        x[1] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
-        x[2] = pardict['P0'].val
-        x[3] = pardict['P1'].val
-        x[4] = pardict['PEPOCH'].val
-        x[5] = pardict['PB'].val
-        x[6] = pardict['ECC'].val
-        x[7] = pardict['A1'].val
-        x[8] = pardict['T0'].val
-        x[9] = pardict['OM'].val
-        x[10] np.float128(ephem.hours(str(pardict['RA'].val)))
-        x[11] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
+        if 'RA' in pardict:
+            x[0] = np.float128(ephem.hours(str(pardict['RA'].val)))
+
+        if 'DEC' in pardict:
+            x[1] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
+
+        if 'P0' in pardict:
+            x[2] = pardict['P0'].val
+
+        if 'P1' in pardict:
+            x[3] = pardict['P1'].val
+
+        if 'PEPOCH' in pardict:
+            x[4] = pardict['PEPOCH'].val
+
+        if 'PB' in pardict:
+            x[5] = pardict['PB'].val
+
+        if 'ECC' in pardict:
+            x[6] = pardict['ECC'].val
+
+        if 'A1' in pardict:
+            x[7] = pardict['A1'].val
+
+        if 'T0' in pardict:
+            x[8] = pardict['T0'].val
+
+        if 'OM' in pardict:
+            x[9] = pardict['OM'].val
+
+        if 'RA' in pardict:
+            x[10] = np.float128(ephem.hours(str(pardict['RA'].val)))
+
+        if 'DEC' in pardict:
+            x[11] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
     elif which=='DD':
         pass
 
@@ -119,13 +142,13 @@ class orbitpar(object):
         if name == 'START' or name == 'FINISH':
             # Do something else here?
             self.name = name
-            self._set = False
+            self._set = True
             self._fit = False
             self._val = 0.0
             self._err = 0.0
         else:
             self.name = name
-            self._set = False
+            self._set = True
             self._fit = False
             self._val = 0.0
             self._err = 0.0
@@ -212,16 +235,16 @@ class orbitpulsar(object):
             self.perfilename = perfilename
             dat = np.loadtxt(perfilename)
             self.mjds = dat[:,0]
-            self.P0 = dat[:,1]
+            self.periods = dat[:,1]
 
             if dat.shape[1] > 2:
                 # Have uncertainties
-                self.P0errs = dat[:,2]
+                self.periodserrs = dat[:,2]
             else:
-                self.P0errs = None
+                self.periodserrs = None
 
             if ms:
-                self.P0 *= 1000.0
+                self.periods *= 1000.0
         else:
             self.perfilename = None
 
@@ -248,6 +271,25 @@ class orbitpulsar(object):
         else:
             self.parfilename = None
 
+    def parmask(self, which='fit'):
+        """
+        Return a boolean mask for a given selection of parameters
+        """
+        pars = self.pars(which='set')
+
+        if which == 'all'):
+            spars = self.pars(which='all')
+        elif which =='set':
+            spars = self.pars(which='set')
+        elif which == 'fit':
+            spars = self.pars(which='fit')
+
+        msk = np.zeros(len(pars), dtype=np.bool)
+        for ii, pid in enumerate(spars):
+            msk[ii] = True
+
+        return msk
+
     def pars(self, which='fit'):
         """
         Returns tuple of names of parameters that are fitted/set/etc
@@ -263,3 +305,33 @@ class orbitpulsar(object):
         elif which == 'all':
             rv = tuple(key for key in self.pardict)
         return rv
+
+    def orbitModel(self, mjds=None, pardict=None):
+        """
+        Return the model for the pulse period, given the current binary model
+        and parameters
+
+        @param mjds:    If not None, use these mjds, instead of the intrinsic
+                        ones
+        @param pardict: If not None, use these parameters, instead of the
+                        intrinsic ones
+        """
+        if mjds is None:
+            mj = self.mjds
+        else:
+            mj = mjds
+
+        if pardict is None:
+            pd = self.pardict
+        else:
+            pd = pardict
+
+        bmarr = pardict_to_array(pd, which=self.binaryModel)
+        pmodel = np.zeros(len(self.mjds))
+
+        if self.binaryModel == 'BT':
+            pmodel = BT_period(mjds, *bmarr)
+        elif self.binaryModel == 'DD':
+            pass
+
+        return pmodel

@@ -35,9 +35,7 @@ import ephem        # pip install pyephem
 import constants
 import qtpulsar as qp
 import tempfile
-
-
-
+from libfitorbit import orbitpulsar
 
 
 ###############################################################################
@@ -45,65 +43,13 @@ import tempfile
 ###############################################################################
 
 import math 
-#import slalib
-#from pyslalib import *         # For Degrees/Arcmin/Arcsec to Radians, and Hour/Min/Sec to Radians
 from scipy.optimize import leastsq
 
-import fitorbit_parfile as parfile
-from utils import eccentric_anomaly
-
-DEG2RAD    = float('1.7453292519943295769236907684886127134428718885417e-2')
-RAD2DEG    = float('57.295779513082320876798154814105170332405472466564')
-C           = float('2.99792458e8')
-
-PARAMS = ['RA', 'DEC', 'P0', 'P1', 'PEPOCH', 'PB', 'ECC', 'A1', 'T0', 'OM']
 
 # "00:00:00.0"
 RAREGEXP = "^(([01]?[0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
 DECREGEXP = "^((-?[0-8]?[0-9]|90):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
 
-
-
-class Param:
-    def __init__(self, is_string=False):
-        self.val = 0.0
-        if is_string:
-            self.val = "00:00:00.0"
-        self.fit = 0
-
-
-# Function to calc the expected period at a time x (in MJD) given the parameters
-def calc_period(x, DRA, DDEC, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA, DEC):
-
-    k1 = 2*np.pi*A1/(PB*86400.0*np.sqrt(1-ECC*ECC))
-
-    # Calc easc in rad
-    easc = 2*np.arctan(np.sqrt((1-ECC)/(1+ECC)) * np.tan(-OM*DEG2RAD/2))
-    #print easc
-    epperias = T0 - PB/360.0*(RAD2DEG * easc - RAD2DEG * ECC * np.sin(easc))
-    #print x,epperias
-    mean_anom = 360*(x-epperias)/PB
-    mean_anom = np.fmod(mean_anom,360.0)
-    #if mean_anom<360.0:
-    #  mean_anom+=360.0
-    mean_anom = np.where(np.greater(mean_anom, 360.0), mean_anom-360.0, mean_anom)
-        
-    # Return ecc_anom (in rad) by iteration
-    ecc_anom = eccentric_anomaly(ECC, mean_anom*DEG2RAD)
-
-    # Return true anomaly in deg
-    true_anom = 2*RAD2DEG*np.arctan(np.sqrt((1+ECC)/(1-ECC))*np.tan(ecc_anom/2))
-
-    #print "easc=%f  epperias=%f  mean_anom=%f  ecc_anom=%f  true_anom=%f"%(easc,epperias,mean_anom,ecc_anom,true_anom)
-    #sys.exit()
-
-    #print RA, DEC
-    #dv = deltav(x, RA, DEC, RA-DRA, DEC-DDEC, 2000.0)
-    #print dv
-
-    return 1000*(P0+P1*1e-15*(x-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) )
-    #return 1000*(P0+P1*1e-15*(x-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM) + k1*ECC*np.cos(OM)) ) * (1-dv/3e8)
-    #return 1000*(P0+P1*1e-15*(x-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) ) * (1-20000/C)
 
 # Function to calc Period residual y-f(x,...)
 def resid_period(param, Pobs, x, fit, fixed_values):
@@ -222,24 +168,26 @@ class BinaryWidget(QtGui.QWidget):
         super(BinaryWidget, self).__init__(parent, **kwargs)
 
         self.initBin()
-        self.init_param_file()
+        #self.init_param_file()
         self.openPulsar(parfilename, perfilename)
         self.fillModelPars()
         self.updatePlot()
 
-        self.psrLoaded = False
-        self.psr = None
         self.parent = parent
 
     def initBin(self):
         """
         Initialize all the Widgets, and add them to the layout
         """
-        self.numpars = len(PARAMS)
+        numpars = 10
         self.parameterCols = 2
-        self.parameterRows = int(np.ceil(self.numpars / self.parameterCols))
+        self.parameterRows = int(np.ceil(numpars / self.parameterCols))
         cblength = 6
         inplength = 20
+
+        # Create an empty binary pulsar object (read later)
+        self.psr = orbitpulsar()
+        self.psrLoaded = False
 
         self.setMinimumSize(650, 550)
 
@@ -255,6 +203,7 @@ class BinaryWidget(QtGui.QWidget):
         self.binaryModelCB.addItem('DD')
         self.binaryModelCB.addItem('T2')
         self.binaryModelCB.addItem('ELL')
+        self.binaryModelCB.setCurrentIndex(0)
         #self.binaryModelCB.stateChanged.connect(self.changedBinaryModel)
         self.operationbox.addWidget(self.binaryModelCB)
 
@@ -278,14 +227,17 @@ class BinaryWidget(QtGui.QWidget):
 
         # Add all the parameters
         index = 0
+        bModel = str(self.binaryModelCB.currentText())
+        PARAMS = self.psr.bmparams[bModel]
         self.parameterbox_pw = []
         for ii in range(self.parameterRows):
             for jj in range(self.parameterCols):
-                if index < self.numpars:
+                if index < numpars:
                     # Add another parameter to the grid
                     offset = jj*(cblength + inplength)
 
                     checkbox = QtGui.QCheckBox(PARAMS[index], parent=self)
+                    checkbox.stateChanged.connect(self.changedParFit)
                     self.parameterbox.addWidget(checkbox, \
                             ii, offset, 1, cblength)
 
@@ -402,12 +354,13 @@ class BinaryWidget(QtGui.QWidget):
         self.binCanvas.draw()
         self.setColorScheme(False)
 
+    """
     def init_param_file(self):
-        """
+        "
         Init parameters of PARFILE
              fit_flag[] : which parameters to fit
              fit_values=[] : values of parameters
-        """
+        "
         self.param = parfile.Parfile()
 
         # Array for LM fit
@@ -431,6 +384,7 @@ class BinaryWidget(QtGui.QWidget):
         # Init self.fit to 0
         for i in range(len(self.p2f)):
             self.fit_flag.append(0)
+    """
 
     def openPulsar(self, parfilename=None, perfilename=None):
         """
@@ -455,7 +409,10 @@ class BinaryWidget(QtGui.QWidget):
             tperfilename = perfilename
             tparfilename = parfilename
 
+        self.psr.readParFile(tparfilename)
+        self.psr.readPerFile(tperfilename)
 
+        """
         # Read the ephemeris (par) file
         self.param.read(tparfilename)
         self.p2f['RA'].val = self.param.RAJ
@@ -472,15 +429,7 @@ class BinaryWidget(QtGui.QWidget):
         # Read the files here
         # TODO: include uncertainties here
         self.mjds, self.periods = np.loadtxt(tperfilename, usecols=(0,1), unpack=True)
-
-        # if flgfreq self.periods=1.0/self.periods
-        # if flgms:
-        if True:
-            pass
-        else:
-            # Give pulse period in milliseconds
-            self.periods = self.periods * 1000.
-
+        """
 
         if perfilename is None or parfilename is None:
             os.remove(tperfilename)
@@ -496,8 +445,8 @@ class BinaryWidget(QtGui.QWidget):
         for pw in self.parameterbox_pw:
             pid = pw['checkbox'].text()
 
-            if pid in self.p2f:
-                pw['lineedit'].setText(str(self.p2f[pid].val))
+            if pid in self.psr.pars(which='set'):
+                pw['lineedit'].setText(str(self.psr[pid].val))
 
     def getModelPars(self):
         """
@@ -516,25 +465,22 @@ class BinaryWidget(QtGui.QWidget):
             for pw in self.parameterbox_pw:
                 pid = pw['checkbox'].text()
 
-                if pid in self.p2f:
+                if pid in self.psr.pars(which='set'):
                     #print("{0} = {1}".format(pid, pw['lineedit'].text()))
-                    self.p2f[pid].val = pw['lineedit'].text()
+                    self.psr[pid].val = pw['lineedit'].text()
                 else:
                     # Add the parameter, so do some extra stuff?
                     pass
         
 
-
-    def write_param_file(self):
-        for PARAM in PARAMS:
-            self.param.set_param(PARAM, self.p2f[PARAM].val)
-
-
     def plotModel(self, widget=None):
         """
         Plot the best-fit binary model
         """
-        xs=np.linspace(min(self.mjds), max(self.mjds), 2000)
+        xs=np.linspace(min(self.psr.mjds), max(self.psr.mjds), 2000)
+
+        ys = self.psr.orbitModel(mjds=xs)
+        """
         ys=np.asarray(calc_period(xs, 0.0, 0.0, \
                 np.float128(self.p2f['P0'].val), \
                 np.float128(self.p2f['P1'].val), \
@@ -546,6 +492,7 @@ class BinaryWidget(QtGui.QWidget):
                 np.float128(self.p2f['OM'].val), \
                 np.float128(ephem.hours(str(self.p2f['RA'].val))), \
                 np.float128(ephem.degrees(str(self.p2f['DEC'].val)))))
+        """
         
         # Redraw plot
         self.setColorScheme(True)
@@ -554,7 +501,7 @@ class BinaryWidget(QtGui.QWidget):
         self.binAxes.get_yaxis().get_major_formatter().set_useOffset(False)
         self.binAxes.set_xlabel('MJD')
         self.binAxes.plot(xs, ys, 'r-')
-        self.binAxes.scatter(self.mjds, self.periods, \
+        self.binAxes.scatter(self.psr.mjds, self.psr.periods, \
                 c='darkred', marker='.', s=50)
         self.binAxes.set_ylabel('Pulse period (ms)')
         self.binAxes.yaxis.labelpad = -1
@@ -593,10 +540,19 @@ class BinaryWidget(QtGui.QWidget):
             color = '#f6989d' # red
         sender.setStyleSheet('QLineEdit { background-color: %s }' % color)
 
+    def changedParFit(self, *args, **kwargs):
+        """
+        Called when we haved set/unset a fitting checkbox of the binary model
+        """
+        for pw in self.parameterbox_pw:
+            pid = pw['checkbox'].text()
+                self.psr[pid].fit = pw['checkbox'].checkState()
+
     def fitModel(self, widget=None):
         """
         Function to perform the fit of selected parameters to the values
         """
+
         fit_pars = np.zeros(len(PARAMS), dtype=np.bool)
         fixedvals = np.zeros(len(PARAMS), dtype=np.float)
 
@@ -636,6 +592,7 @@ class BinaryWidget(QtGui.QWidget):
             pass
 
         
+        # Here starts the old fitter
         """
         # Retrieve values of parameters
         self.fit_values = []
@@ -729,7 +686,7 @@ class BinaryWidget(QtGui.QWidget):
         self.binAxes.grid(True)
 
         self.binAxes.get_yaxis().get_major_formatter().set_useOffset(False)
-        self.binAxes.scatter(self.mjds, self.periods, \
+        self.binAxes.scatter(self.psr.mjds, self.psr.periods, \
                 c='darkred', marker='.', s=50)
 
         self.binAxes.set_xlabel('MJD')
@@ -738,38 +695,6 @@ class BinaryWidget(QtGui.QWidget):
         self.binCanvas.draw()
         self.setColorScheme(False)
 
-
-    def updatePlotL(self, x, y, yerr, xlabel, ylabel, title):
-        """
-        Update the plot, given all the plotting info
-
-        OLD: for plk
-        """
-        self.setColorScheme(True)
-        self.binAxes.clear()
-        self.binAxes.grid(True)
-
-        xave = 0.5 * (np.max(x) + np.min(x))
-        xmin = xave - 1.05 * (xave - np.min(x))
-        xmax = xave + 1.05 * (np.max(x) - xave)
-        if yerr is None:
-            yave = 0.5 * (np.max(y) + np.min(y))
-            ymin = yave - 1.05 * (yave - np.min(y))
-            ymax = yave + 1.05 * (np.max(y) - yave)
-            self.binAxes.scatter(x, y, marker='.', c='g')
-        else:
-            yave = 0.5 * (np.max(y+yerr) + np.min(y-yerr))
-            ymin = yave - 1.05 * (yave - np.min(y-yerr))
-            ymax = yave + 1.05 * (np.max(y+yerr) - yave)
-            self.binAxes.errorbar(x, y, yerr=yerr, fmt='.', color='green')
-
-        self.binAxes.axis([xmin, xmax, ymin, ymax])
-        self.binAxes.get_xaxis().get_major_formatter().set_useOffset(False)
-        self.binAxes.set_xlabel(xlabel)
-        self.binAxes.set_ylabel(ylabel)
-        self.binAxes.set_title(title)
-        self.binCanvas.draw()
-        self.setColorScheme(False)
 
     def setFocusToCanvas(self):
         """
