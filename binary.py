@@ -434,7 +434,7 @@ class BinaryWidget(QtGui.QWidget):
         self.binAxes.clear()
         self.binAxes.grid(True)
         self.binAxes.set_xlabel('MJD')
-        self.binAxes.set_ylabel('Pulse period ($\mu$s)')
+        self.binAxes.set_ylabel('Pulse period (ms)')
         self.binAxes.yaxis.labelpad = -1
         self.binCanvas.draw()
         self.setColorScheme(False)
@@ -482,10 +482,10 @@ class BinaryWidget(QtGui.QWidget):
             tparfilename = tempfile.mktemp()
             tperfile = open(tperfilename, 'w')
             tparfile = open(tparfilename, 'w')
-            tperfile.write(constants.J1903PER)
-            #tperfile.write(constants.J1756PER)
-            tparfile.write(constants.J1903EPH)
-            #tparfile.write(constants.J1756EPH)
+            #tperfile.write(constants.J1903PER)
+            tperfile.write(constants.J1756PER)
+            #tparfile.write(constants.J1903EPH)
+            tparfile.write(constants.J1756EPH)
             tperfile.close()
             tparfile.close()
         else:
@@ -592,7 +592,7 @@ class BinaryWidget(QtGui.QWidget):
         self.binAxes.plot(xs, ys, 'r-')
         self.binAxes.scatter(self.mjds, self.periods, \
                 c='darkred', marker='.', s=50)
-        self.binAxes.set_ylabel('Pulse period ($\mu$s)')
+        self.binAxes.set_ylabel('Pulse period (ms)')
         self.binAxes.yaxis.labelpad = -1
         self.binCanvas.draw()
         self.setColorScheme(False)
@@ -769,7 +769,7 @@ class BinaryWidget(QtGui.QWidget):
                 c='darkred', marker='.', s=50)
 
         self.binAxes.set_xlabel('MJD')
-        self.binAxes.set_ylabel('Pulse period ($\mu$s)')
+        self.binAxes.set_ylabel('Pulse period (ms)')
         self.binAxes.yaxis.labelpad = -1
         self.binCanvas.draw()
         self.setColorScheme(False)

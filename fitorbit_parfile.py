@@ -212,6 +212,16 @@ class Parfile:
         pfo.close()
 
     def set_param(self, param, value):
+        if hasattr(self, 'P0'):
+          if self.P0:
+            setattr(self, 'F0', 1.0/self.P0)
+          else:
+            setattr(self, 'F0', 0.0)
+        if hasattr(self, 'P1'):
+          if self.P1:
+            setattr(self, 'F1', -self.P1/(self.P0*self.P0))
+          else:
+             setattr(self, 'F1', 0.0)
         setattr(self, param, value)
 
 
