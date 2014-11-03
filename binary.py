@@ -59,46 +59,8 @@ C           = float('2.99792458e8')
 PARAMS = ['RA', 'DEC', 'P0', 'P1', 'PEPOCH', 'PB', 'ECC', 'A1', 'T0', 'OM']
 
 # "00:00:00.0"
-RAREGEXP = "^(([01][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
-DECREGEXP = "^((-?[0-8][0-9]|90):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
-
-
-# Declarations for MENU
-"""
-entries = (
-  ( "FileMenu", None, "File" ),               # name, stock id, label
-  ( "PreferencesMenu", None, "Preferences" ), # name, stock id, label
-  ( "HelpMenu", None, "Help" ),               # name, stock id, label
-  ( "Save", gtk.STOCK_SAVE, "_Save","<control>S", "Save current file", activate_action ),
-  ( "SaveAs", gtk.STOCK_SAVE, "Save _As...","<control>A", "Save to a file", activate_action ),
-  ( "Quit", gtk.STOCK_QUIT, "_Quit", "<control>Q", "Quit", quit  ),
-  ( "About", None, "_About", "<control>H", "About", activate_action ),
-  ( "Logo", "demo-gtk-logo", None, None, "GTK+", activate_action ),
-)
-"""
-
-
-ui_info = \
-'''<ui>
-  <menubar name='MenuBar'>
-    <menu action='FileMenu'>
-      <menuitem action='Save'/>
-      <menuitem action='SaveAs'/>
-      <separator/>
-      <menuitem action='Quit'/>
-    </menu>
-    <menu action='PreferencesMenu'>
-    </menu>
-    <menu action='HelpMenu'>
-      <menuitem action='About'/>
-    </menu>
-  </menubar>
-  <toolbar  name='ToolBar'>
-    <toolitem action='Quit'/>
-    <separator action='Sep1'/>
-    <toolitem action='Logo'/>
-  </toolbar>
-</ui>'''
+RAREGEXP = "^(([01]?[0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
+DECREGEXP = "^((-?[0-8]?[0-9]|90):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
 
 
 
@@ -140,6 +102,7 @@ def calc_period(x, DRA, DDEC, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA, DEC):
     #print dv
 
     return 1000*(P0+P1*1e-15*(x-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) )
+    #return 1000*(P0+P1*1e-15*(x-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM) + k1*ECC*np.cos(OM)) ) * (1-dv/3e8)
     #return 1000*(P0+P1*1e-15*(x-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) ) * (1-20000/C)
 
 # Function to calc Period residual y-f(x,...)
@@ -507,6 +470,7 @@ class BinaryWidget(QtGui.QWidget):
         self.p2f['OM'].val = self.param.OM
 
         # Read the files here
+        # TODO: include uncertainties here
         self.mjds, self.periods = np.loadtxt(tperfilename, usecols=(0,1), unpack=True)
 
         # if flgfreq self.periods=1.0/self.periods
