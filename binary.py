@@ -37,125 +37,12 @@ import qtpulsar as qp
 import tempfile
 from libfitorbit import orbitpulsar
 
-
-###############################################################################
-######################## Direct copy from fitorbit.py #########################
-###############################################################################
-
 import math 
 from scipy.optimize import leastsq
 
-
-# "00:00:00.0"
+# Regular expressions for RA and DEC fields
 RAREGEXP = "^(([01]?[0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
 DECREGEXP = "^((-?[0-8]?[0-9]|90):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
-
-
-# Function to calc Period residual y-f(x,...)
-def resid_period(param, Pobs, x, fit, fixed_values):
-    """
-    param : value of the M parameters to fit
-    Pobs : array of the f(x) values
-    x : array of the x values
-
-    fit : Array of N parameters which indicate the M parameters to fit  
-    fixed_values : values of the fixed parameters
-    """
-
-    nb_fit=0
-
-
-    # DRA 
-    if fit[0]:
-        nb_fit+=1
-    DRA = 0.0 
-
-    # DDEC
-    if fit[1]:
-        nb_fit+=1
-    DDEC = 0.0 
-
-    # P0
-    if fit[2]:
-        P0 = param[nb_fit]
-        nb_fit+=1
-    else:
-        P0 = fixed_values[2]
-
-    # P1
-    if fit[3]:
-        P1 = param[nb_fit]
-        nb_fit +=1
-    else:
-        P1 = fixed_values[3]
-
-    # PEPOCH
-    if fit[4]:
-        PEPOCH = param[nb_fit]
-        nb_fit +=1
-    else:
-        PEPOCH = fixed_values[4] 
-
-    # PB
-    if fit[5]:
-        PB = param[nb_fit]
-        nb_fit +=1
-    else:
-        PB = fixed_values[5]
-
-    # ECC
-    if fit[6]:
-        ECC = param[nb_fit]
-        nb_fit +=1
-    else:
-        ECC = fixed_values[6]
-
-    # A1
-    if fit[7]:
-        A1 = param[nb_fit]
-        nb_fit +=1
-    else:
-        A1 = fixed_values[7]
-
-    # T0
-    if fit[8]:
-        T0 = param[nb_fit]
-        nb_fit +=1
-    else:
-        T0 = fixed_values[8]
-
-    # A1
-    if fit[9]:
-        OM = param[nb_fit]
-        nb_fit +=1
-    else:
-        OM = fixed_values[9]
-
-    # RA
-    RA = fixed_values[0]
-    DEC = fixed_values[1]
-
-    return Pobs - calc_period(x, DRA, DDEC, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA, DEC)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-###############################################################################
-######################## Qt code that mimicks fitorbit ########################
-###############################################################################
-
-
-
 
 class BinaryWidget(QtGui.QWidget):
     """
@@ -354,38 +241,6 @@ class BinaryWidget(QtGui.QWidget):
         self.binCanvas.draw()
         self.setColorScheme(False)
 
-    """
-    def init_param_file(self):
-        "
-        Init parameters of PARFILE
-             fit_flag[] : which parameters to fit
-             fit_values=[] : values of parameters
-        "
-        self.param = parfile.Parfile()
-
-        # Array for LM fit
-        self.fit_flag=[]
-        self.fit_values=[]
-        self.param2fit=[]
-        self.mjds2=[]
-        self.ps2=[]
-
-        # Dict p2f for parameters to fit
-        self.p2f={}
-        self.label=[]
-        for PARAM in PARAMS:
-            if PARAM=="RA" or PARAM=="DEC":
-                self.p2f[PARAM] = Param(is_string=True)
-            else:        
-                self.p2f[PARAM] = Param()
-            self.label.append(PARAM)
-
-
-        # Init self.fit to 0
-        for i in range(len(self.p2f)):
-            self.fit_flag.append(0)
-    """
-
     def openPulsar(self, parfilename=None, perfilename=None):
         """
         Open a per/par file.
@@ -412,25 +267,6 @@ class BinaryWidget(QtGui.QWidget):
         self.psr.readParFile(tparfilename)
         self.psr.readPerFile(tperfilename)
 
-        """
-        # Read the ephemeris (par) file
-        self.param.read(tparfilename)
-        self.p2f['RA'].val = self.param.RAJ
-        self.p2f['DEC'].val = self.param.DECJ
-        self.p2f['P0'].val = self.param.P0
-        self.p2f['P1'].val = self.param.P1/1e-15
-        self.p2f['PEPOCH'].val = self.param.PEPOCH
-        self.p2f['PB'].val = self.param.PB
-        self.p2f['ECC'].val = self.param.ECC
-        self.p2f['A1'].val = self.param.A1
-        self.p2f['T0'].val = self.param.T0
-        self.p2f['OM'].val = self.param.OM
-
-        # Read the files here
-        # TODO: include uncertainties here
-        self.mjds, self.periods = np.loadtxt(tperfilename, usecols=(0,1), unpack=True)
-        """
-
         if perfilename is None or parfilename is None:
             os.remove(tperfilename)
             os.remove(tparfilename)
@@ -446,7 +282,12 @@ class BinaryWidget(QtGui.QWidget):
             pid = pw['checkbox'].text()
 
             if pid in self.psr.pars(which='set'):
-                pw['lineedit'].setText(str(self.psr[pid].val))
+                if pid == 'RA':
+                    pw['lineedit'].setText(str(ephem.hours(self.psr[pid].val)))
+                elif pid == 'DEC':
+                    pw['lineedit'].setText(str(ephem.degrees(self.psr[pid].val)))
+                else:
+                    pw['lineedit'].setText(str(self.psr[pid].val))
 
     def getModelPars(self):
         """
@@ -466,8 +307,14 @@ class BinaryWidget(QtGui.QWidget):
                 pid = pw['checkbox'].text()
 
                 if pid in self.psr.pars(which='set'):
-                    #print("{0} = {1}".format(pid, pw['lineedit'].text()))
-                    self.psr[pid].val = pw['lineedit'].text()
+                    if pid == 'RA':
+                        self.psr[pid].val = \
+                            np.float128(ephem.hours(str(pw['lineedit'].text())))
+                    elif pid == 'DEC':
+                        self.psr[pid].val = \
+                            np.float128(ephem.degrees(str(pw['lineedit'].text())))
+                    else:
+                        self.psr[pid].val = pw['lineedit'].text()
                 else:
                     # Add the parameter, so do some extra stuff?
                     pass
@@ -477,22 +324,8 @@ class BinaryWidget(QtGui.QWidget):
         """
         Plot the best-fit binary model
         """
-        xs=np.linspace(min(self.psr.mjds), max(self.psr.mjds), 2000)
-
+        xs = np.linspace(min(self.psr.mjds), max(self.psr.mjds), 2000)
         ys = self.psr.orbitModel(mjds=xs)
-        """
-        ys=np.asarray(calc_period(xs, 0.0, 0.0, \
-                np.float128(self.p2f['P0'].val), \
-                np.float128(self.p2f['P1'].val), \
-                np.float128(self.p2f['PEPOCH'].val), \
-                np.float128(self.p2f['PB'].val), \
-                np.float128(self.p2f['ECC'].val), \
-                np.float128(self.p2f['A1'].val), \
-                np.float128(self.p2f['T0'].val), \
-                np.float128(self.p2f['OM'].val), \
-                np.float128(ephem.hours(str(self.p2f['RA'].val))), \
-                np.float128(ephem.degrees(str(self.p2f['DEC'].val)))))
-        """
         
         # Redraw plot
         self.setColorScheme(True)
@@ -546,136 +379,39 @@ class BinaryWidget(QtGui.QWidget):
         """
         for pw in self.parameterbox_pw:
             pid = pw['checkbox'].text()
-                self.psr[pid].fit = pw['checkbox'].checkState()
+            self.psr[pid].fit = pw['checkbox'].checkState()
 
-    def fitModel(self, widget=None):
+    def fitModel(self):
         """
         Function to perform the fit of selected parameters to the values
         """
+        # Use a mask to keep track of the parameters we fit for
+        fitmsk = self.psr.parmask(which='fit')
 
-        fit_pars = np.zeros(len(PARAMS), dtype=np.bool)
-        fixedvals = np.zeros(len(PARAMS), dtype=np.float)
+        # TODO: RA and DEC are still in strings. Convert them somewhere good
 
-        for pw in self.parameterbox_pw:
-            pid = pw['checkbox'].text()
-            fit_pars[PARAMS.index(pid)] = pw['checkbox'].checkState()
+        # Initialize the parameters
+        nfix = np.sum(fitmsk)
+        apars = self.psr.vals(which='set')
+        fpars = self.psr.vals(which='fit')
 
-        for ii, pid in enumerate(PARAMS):
-            if not pid in ['RA', 'DEC']:
-                fixedvals[ii] = np.float(self.p2f[pid].val)
-            elif pid == 'RA':
-                fixedvals[ii] = np.float(ephem.hours(str(self.p2f['RA'].val)))
-            elif pid == 'DEC':
-                fixedvals[ii] = np.float(ephem.degrees(str(self.p2f['DEC'].val)))
+        # Create a function for the residuals
+        def resids(pars, psr, allpars, mask):
+            allpars[mask] = pars
+            return psr.orbitResiduals(parameters=allpars)
 
-        if np.sum(fit_pars) > 0:
-            # TODO: do the same kind of windowing as in Plk
-            param = np.zeros(np.sum(fit_pars), dtype=np.float)
-            param[:] = fixedvals[fit_pars]
+        # If there are parameters to fit, do a least-squares minimization
+        if np.sum(fitmsk) > 0:
+            # Perform the least-squares fit
+            plsq = leastsq(resids, np.float64(fpars), args=(self.psr, apars, fitmsk))
 
-            plsq = leastsq(resid_period, param, args=(self.periods, self.mjds, \
-                    fit_pars, fixedvals))
-            #print('Parameters fitted : {0}'.format(plsq[0]))
-
-            # Place the parameters back in the boxes
-            fixedvals[fit_pars] = plsq[0]
-            for ii, pid in enumerate(PARAMS):
-                if not pid in ['RA', 'DEC']:
-                    self.p2f[pid].val = fixedvals[ii]
-                elif pid == 'RA':
-                    self.p2f[pid].val = str(ephem.hours(fixedvals[ii]))
-                elif pid == 'DEC':
-                    self.p2f[pid].val = str(ephem.degrees(fixedvals[ii]))
+            # Place the new paramerers back in the boxes
+            apars[fitmsk] = plsq[0]
+            self.psr.vals(which='set', newvals=apars)
             self.fillModelPars()
             self.plotModel()
         else:
             pass
-
-        
-        # Here starts the old fitter
-        """
-        # Retrieve values of parameters
-        self.fit_values = []
-        for i in range(len(self.p2f)):
-            if self.label[i]=='RA':
-                raj_entry = self.local_entry[i].get_text().split(':')
-                ra_radian = 0.0
-                if len(raj_entry) > 1:
-                    # Entry in HH:MM:SS
-                    (rah,ram,ras) = raj_entry
-                    (ra_radian,flag) = slalib.sla_dtf2r(rah,ram,ras)
-                else:
-                    # Entry in radians
-                    ra_radian = float(raj_entry[0])
-
-                self.fit_values.append( ra_radian )
-
-            elif self.label[i]=='DEC':
-                decj_entry = self.local_entry[i].get_text().split(':')
-                dec_radian = 0.0
-                if len(decj_entry) > 1:
-                    # Entry in HH:MM:SS
-                    (dech,decm,decs) = decj_entry
-                    (dec_radian,flag) = slalib.sla_dtf2r(dech,decm,decs)
-                else:
-                    # Entry in radians
-                    dec_radian = float(decj_entry[0])
-
-                self.fit_values.append( dec_radian )
-            else:
-                self.fit_values.append( float(self.local_entry[i].get_text()) )
-
-
-        # Get which parameters will be fitted
-        self.param2fit = []
-        for i,dofit in enumerate(self.fit_flag):
-            if dofit:
-                self.param2fit.append( self.fit_values[i] )
-
-        # If not parameters will be fitted, return now !
-        if not self.param2fit:
-            return
-
-
-        # Retrieve which points to include (points in the window)
-        self.ps2=[]
-        self.mjds2=[]
-        xmin,xmax=self.ax1.get_xlim()
-        for ii, mjd in enumerate(self.mjds):
-            if(xmin<mjd and mjd<xmax):
-              self.mjds2.append(mjd)
-              self.ps2.append(self.periods[ii])
-
-        self.mjds2 = np.asarray(self.mjds2)
-        self.ps2 = np.asarray(self.ps2)
-        #print self.mjds2,self.ps2
-
-        # Do least square fit
-        print 'Input Parameters :\n',self.param2fit
-        #print self.ps2, self.mjds2, self.fit_flag, self.fit_values
-        plsq = leastsq(resid_period, self.param2fit, args=(self.ps2, self.mjds2, self.fit_flag, self.fit_values))
-        print 'Parameters fitted :\n', plsq[0]
-        #print resid_period(self.param2fit,self.ps2, self.mjds2, self.fit, self.fit_values)
-
-        print 'chi**2 = ',np.sum(np.power(resid_period(self.param2fit,self.ps2, self.mjds2, self.fit_flag, self.fit_values),2))
-        # Return new parameters values in boxes
-        j=0
-        for i,dofit in enumerate(self.fit_flag):
-          #print i,dofit, plsq
-          if dofit:
-            if sum(self.fit_flag)>=1:
-                self.local_entry[i].set_text(str(plsq[0][j]))
-                j+=1
-            else:
-                self.local_entry[i].set_text(str(plsq[0]))
-
-        # Update the plot
-        self.plotModel()
-        """
-
-
-
-
 
     def updatePlot(self):
         """
@@ -798,7 +534,6 @@ class BinaryWidget(QtGui.QWidget):
             # Re-do the fit, using post-fit values of the parameters
             pass
         elif ukey == QtCore.Qt.Key_Left:
-            # print("Left pressed")
             pass
         else:
             #print("Other key: {0} {1} {2} {3}".format(ukey,

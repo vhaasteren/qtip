@@ -22,7 +22,7 @@ try:
 except ImportError:
     from ordereddict import OrderedDict
 
-# Use long doubles for the calculations
+# Use long doubles for the calculations (from fitorbit)
 DEG2RAD    = np.float128('1.7453292519943295769236907684886127134428718885417e-2')
 RAD2DEG    = np.float128('57.295779513082320876798154814105170332405472466564')
 C           = np.float128('2.99792458e8')
@@ -35,51 +35,117 @@ def pardict_to_array(pardict, which='BT'):
 
     @param pardict:     Dictionary of orbit model parameters
     @param which:       Which binary model we are arranging for
+
+    @return x:          Array of model parameters
     """
     x = None
     if which=='BT':
-        #def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
-        #        OM, RA_RAD, DEC_RAD):
         x = np.zeros(12, dtype=np.float128)
         if 'RA' in pardict:
-            x[0] = np.float128(ephem.hours(str(pardict['RA'].val)))
+            if isinstance(pardict['RA'].val, basestring):
+                x[0] = np.float128(ephem.hours(str(pardict['RA'].val)))
+            else:
+                x[0] = np.float128(pardict['RA'].val)
 
         if 'DEC' in pardict:
-            x[1] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
+            if isinstance(pardict['DEC'].val, basestring):
+                x[1] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
+            else:
+                x[1] = np.float128(pardict['DEC'].val)
 
         if 'P0' in pardict:
-            x[2] = pardict['P0'].val
+            x[2] = np.float128(pardict['P0'].val)
 
         if 'P1' in pardict:
-            x[3] = pardict['P1'].val
+            x[3] = np.float128(pardict['P1'].val)
 
         if 'PEPOCH' in pardict:
-            x[4] = pardict['PEPOCH'].val
+            x[4] = np.float128(pardict['PEPOCH'].val)
 
         if 'PB' in pardict:
-            x[5] = pardict['PB'].val
+            x[5] = np.float128(pardict['PB'].val)
 
         if 'ECC' in pardict:
-            x[6] = pardict['ECC'].val
+            x[6] = np.float128(pardict['ECC'].val)
 
         if 'A1' in pardict:
-            x[7] = pardict['A1'].val
+            x[7] = np.float128(pardict['A1'].val)
 
         if 'T0' in pardict:
-            x[8] = pardict['T0'].val
+            x[8] = np.float128(pardict['T0'].val)
 
         if 'OM' in pardict:
-            x[9] = pardict['OM'].val
+            x[9] = np.float128(pardict['OM'].val)
 
         if 'RA' in pardict:
-            x[10] = np.float128(ephem.hours(str(pardict['RA'].val)))
+            if isinstance(pardict['RA'].val, basestring):
+                x[10] = np.float128(ephem.hours(str(pardict['RA'].val)))
+            else:
+                x[10] = np.float128(pardict['RA'].val)
 
         if 'DEC' in pardict:
-            x[11] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
+            if isinstance(pardict['DEC'].val, basestring):
+                x[11] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
+            else:
+                x[11] = np.float128(pardict['DEC'].val)
+    else:
+        raise NotImplemented("Only BT works for now")
+
+    return x
+
+def array_to_pardict(parameters, which='BT'):
+    """
+    Given an array of parameter values, return an odereddict with the parameter
+    values
+
+    @param parameters:  Array of orbit model parameters
+    @param which:       Which binary model we are arranging for
+
+    @return pardict:    Parameter dictionary with parameter values
+    """
+    pardict = OrderedDict()
+    if which=='BT':
+        #def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
+        #        OM, RA_RAD, DEC_RAD):
+        pardict['RA'] = createOrbitPar('RA')
+        pardict['RA'].val = parameters[0]
+
+        pardict['DEC'] = createOrbitPar('DEC')
+        pardict['DEC'].val = parameters[1]
+
+        pardict['P0'] = createOrbitPar('P0')
+        pardict['P0'].val = parameters[2]
+
+        pardict['P1'] = createOrbitPar('P1')
+        pardict['P1'].val = parameters[3]
+
+        pardict['PEPOCH'] = createOrbitPar('PEPOCH')
+        pardict['PEPOCH'].val = parameters[4]
+
+        pardict['PB'] = createOrbitPar('PB')
+        pardict['PB'].val = parameters[5]
+
+        pardict['ECC'] = createOrbitPar('ECC')
+        pardict['ECC'].val = parameters[6]
+
+        pardict['A1'] = createOrbitPar('A1')
+        pardict['A1'].val = parameters[7]
+
+        pardict['T0'] = createOrbitPar('T0')
+        pardict['T0'].val = parameters[8]
+
+        pardict['OM'] = createOrbitPar('OM')
+        pardict['OM'].val = parameters[9]
+
+        #pardict['XX'] = createOrbitPar('XX')
+        #pardict['XX'].val = parameters[10]
+
+        #pardict['XX'] = createOrbitPar('XX')
+        #pardict['XX'].val = parameters[11]
     elif which=='DD':
         pass
 
-    return x
+    return pardict
 
 def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
         OM, RA_RAD, DEC_RAD):
@@ -254,30 +320,43 @@ class orbitpulsar(object):
 
         @param parfilename: timing model parameter file
         """
+        # TODO: Check the units here
         if parfilename is not None and os.path.isfile(parfilename):
             self.parf = parfile.Parfile()
             
             self.parf.read(parfilename)
-            self['RA'].val = self.parf.RAJ
-            self['DEC'].val = self.parf.DECJ
-            self['P0'].val = self.parf.P0
-            self['P1'].val = self.parf.P1/1e-15
-            self['PEPOCH'].val = self.parf.PEPOCH
-            self['PB'].val = self.parf.PB
-            self['ECC'].val = self.parf.ECC
-            self['A1'].val = self.parf.A1
-            self['T0'].val = self.parf.T0
-            self['OM'].val = self.parf.OM
+
+            if isinstance(self.parf.RAJ, basestring):
+                self['RA'].val = np.float128(ephem.hours(str(self.parf.RAJ)))
+            else:
+                self['RA'].val = np.float128(self.parf.RAJ)
+
+            if isinstance(self.parf.DECJ, basestring):
+                self['DEC'].val = np.float128(ephem.degrees(str(self.parf.DECJ)))
+            else:
+                self['DEC'].val = self.parf.DECJ
+
+            self['P0'].val = np.float128(self.parf.P0)
+            self['P1'].val = np.float128(self.parf.P1/1e-15)
+            self['PEPOCH'].val = np.float128(self.parf.PEPOCH)
+            self['PB'].val = np.float128(self.parf.PB)
+            self['ECC'].val = np.float128(self.parf.ECC)
+            self['A1'].val = np.float128(self.parf.A1)
+            self['T0'].val = np.float128(self.parf.T0)
+            self['OM'].val = np.float128(self.parf.OM)
         else:
             self.parfilename = None
 
-    def parmask(self, which='fit'):
+    def parmask(self, which='fit', pars=None):
         """
         Return a boolean mask for a given selection of parameters
         """
         pars = self.pars(which='set')
 
-        if which == 'all'):
+        if pars is None:
+            pars = self.pars(which='set')
+
+        if which == 'all':
             spars = self.pars(which='all')
         elif which =='set':
             spars = self.pars(which='set')
@@ -285,10 +364,35 @@ class orbitpulsar(object):
             spars = self.pars(which='fit')
 
         msk = np.zeros(len(pars), dtype=np.bool)
-        for ii, pid in enumerate(spars):
-            msk[ii] = True
+        for ii, pid in enumerate(pars):
+            if pid in spars:
+                msk[ii] = True
 
         return msk
+
+    def vals(self, which='fit', pars=None, newvals=None):
+        """
+        Given the names of the parameters (None=all), return a numpy array with
+        the parameter values
+
+        @param which:   which parameters to obtain/modify
+        @param pars:    overrides which, list/tuple of parameters
+        @param newvals: numpy array with new values (not used if None)
+
+        @return:    (new) values of selection (numpy array)
+        """
+        # TODO: Do something with the RA/DEC values here
+        msk = self.parmask(which=which, pars=pars)
+        rv = np.zeros(np.sum(msk), dtype=np.float128)
+
+        for ii, pd in enumerate(self.pardict):
+            if msk[ii]:
+                ind = np.sum(msk[:ii+1])-1
+                if newvals is not None:
+                    self.pardict[pd].val = newvals[ind]
+                rv[ind] = np.float128(self.pardict[pd].val)
+
+        return rv
 
     def pars(self, which='fit'):
         """
@@ -330,8 +434,27 @@ class orbitpulsar(object):
         pmodel = np.zeros(len(self.mjds))
 
         if self.binaryModel == 'BT':
-            pmodel = BT_period(mjds, *bmarr)
+            pmodel = BT_period(mj, *bmarr)
         elif self.binaryModel == 'DD':
-            pass
+            raise NotImplemented("Only BT works for now")
 
         return pmodel
+
+    def orbitResiduals(self, pardict=None, parameters=None):
+        """
+        Return the residuals = data - model for the pulse period, given the
+        current binary model and parameters
+
+        @param pardict:     If not None, use these parameters, instead of the
+                            intrinsic ones
+        @param parameters:  Overrides pardict. If not None, use this array of
+                            parameters instead of the intrinsic ones
+        """
+        if parameters is not None:
+            pardict = array_to_pardict(parameters, which=self.binaryModel)
+        elif pardict is not None:
+            pass
+        else:
+            pardict = self.pardict
+
+        return self.periods - self.orbitModel(pardict=pardict)
