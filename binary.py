@@ -420,7 +420,8 @@ class BinaryWidget(QtGui.QWidget):
         # Create a function for the residuals
         def resids(pars, bpsr, allpars, mask):
             allpars[mask] = pars
-            return bpsr.orbitResiduals(parameters=allpars)
+            #return bpsr.orbitResiduals(parameters=allpars)
+            return bpsr.orbitLS(parameters=allpars)
 
         # If there are parameters to fit, do a least-squares minimization
         if np.sum(fitmsk) > 0:
@@ -448,7 +449,11 @@ class BinaryWidget(QtGui.QWidget):
         xs = np.linspace(min(self.bpsr.mjds), max(self.bpsr.mjds), 2000)
         ys = self.bpsr.orbitModel(mjds=xs)
         pdp['plot'] = (xs, ys)
-        pdp['scatter'] = (self.bpsr.mjds, self.bpsr.periods)
+        if self.bpsr.periodserrs is None:
+            pdp['scatter'] = (self.bpsr.mjds, self.bpsr.periods)
+        else:
+            pdp['errorbar'] = (self.bpsr.mjds, self.bpsr.periods, \
+                    self.bpsr.periodserrs)
         if len(self.bpsr.mjds) > 0:
             dx = 0.05 * (max(self.bpsr.mjds) - min(self.bpsr.mjds))
             dy = 0.05 * (max(self.bpsr.periods) - min(self.bpsr.periods))
@@ -469,7 +474,11 @@ class BinaryWidget(QtGui.QWidget):
                 np.float(self.bpsr['PB'].val)
         xinds = np.argsort(xphase)[::-1]
         pdf['plot'] = (xphase[xinds], ys[xinds])
-        pdf['scatter'] = (phase, self.bpsr.periods)
+        if self.bpsr.periodserrs is None:
+            pdf['scatter'] = (phase, self.bpsr.periods)
+        else:
+            pdf['errorbar'] = (phase, self.bpsr.periods, \
+                    self.bpsr.periodserrs)
         pdf['xlim'] = (0.0, 1.0)
         pdf['ylim'] = ylims
         pdf['xlabel'] = 'Phase'
@@ -560,7 +569,11 @@ class BinaryWidget(QtGui.QWidget):
             if self.showplot == 'periodphase':
                 pd = self.plotdict['period']
                 self.binAxes1.get_yaxis().get_major_formatter().set_useOffset(False)
-                self.binAxes1.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                if 'scatter' in pd:
+                    self.binAxes1.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                else:
+                    self.binAxes1.errorbar(pd['errorbar'][0], pd['errorbar'][1], \
+                            yerr=pd['errorbar'][2], c='blue', fmt='.')
                 self.binAxes1.set_xlabel(pd['xlabel'])
                 self.binAxes1.set_ylabel(pd['ylabel'])
                 self.binAxes1.set_xlim(*pd['xlim'])
@@ -571,7 +584,11 @@ class BinaryWidget(QtGui.QWidget):
 
                 pd = self.plotdict['phase']
                 self.binAxes2.get_yaxis().get_major_formatter().set_useOffset(False)
-                self.binAxes2.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                if 'scatter' in pd:
+                    self.binAxes2.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                else:
+                    self.binAxes2.errorbar(pd['errorbar'][0], pd['errorbar'][1], \
+                            yerr=pd['errorbar'][2], c='blue', fmt='.')
                 self.binAxes2.set_xlabel(pd['xlabel'])
                 self.binAxes2.set_ylabel(pd['ylabel'])
                 self.binAxes2.set_xlim(*pd['xlim'])

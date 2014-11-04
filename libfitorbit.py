@@ -475,6 +475,16 @@ class orbitpulsar(object):
 
         return self.periods - self.orbitModel(pardict=pardict)
 
+    def orbitLS(self, pardict=None, parameters=None):
+        residuals = self.orbitResiduals(pardict=pardict, parameters=parameters)
+
+        if self.periodserrs is not None:
+            periodserrs = self.periodserrs
+        else:
+            periodserrs = np.ones(len(self.periods))
+
+        return residuals / periodserrs
+
     def roughness(self, pb):
         """
         Calculate the roughness, given an array of binary periods
