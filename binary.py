@@ -75,6 +75,11 @@ class BinaryWidget(QtGui.QWidget):
         self.bpsr = orbitpulsar()
         self.psrLoaded = False
 
+        # Create an empty dictionary that will carry the plotting information
+        self.plotdict = {}
+        self.showplot = None
+        self.plotmodel = False
+
         self.setMinimumSize(650, 550)
 
         # The layout boxes and corresponding widgets
@@ -103,9 +108,14 @@ class BinaryWidget(QtGui.QWidget):
         self.plotCheckBox.stateChanged.connect(self.changedPlotModel)
         self.operationbox.addWidget(self.plotCheckBox)
 
+        # Button for plotting the periods
+        self.periodButton = QtGui.QPushButton('Periods')
+        self.periodButton.clicked.connect(self.plotPeriods)
+        self.operationbox.addWidget(self.periodButton)
+
         # Button for the Roughness
         self.roughButton = QtGui.QPushButton('Roughness')
-        self.roughButton.clicked.connect(self.rough)
+        self.roughButton.clicked.connect(self.plotRough)
         self.operationbox.addWidget(self.roughButton)
 
         # Finish the operation Widget
@@ -210,7 +220,7 @@ class BinaryWidget(QtGui.QWidget):
         # Obtain the Widget background color
         color = self.palette().color(QtGui.QPalette.Window)
         r, g, b = color.red(), color.green(), color.blue()
-        rgbcolor = (r/255.0, g/255.0, b/255.0)
+        self.windCol = (r/255.0, g/255.0, b/255.0)
 
         if start:
             # Copy of 'white', because of bug in matplotlib that does not allow
@@ -220,11 +230,11 @@ class BinaryWidget(QtGui.QWidget):
                 self.orig_rcParams[key] = matplotlib.rcParams[key]
 
             rcP = copy.deepcopy(constants.mpl_rcParams_white)
-            rcP['axes.facecolor'] = rgbcolor
-            rcP['figure.facecolor'] = rgbcolor
-            rcP['figure.edgecolor'] = rgbcolor
-            rcP['savefig.facecolor'] = rgbcolor
-            rcP['savefig.edgecolor'] = rgbcolor
+            rcP['axes.facecolor'] = self.windCol
+            rcP['figure.facecolor'] = self.windCol
+            rcP['figure.edgecolor'] = self.windCol
+            rcP['savefig.facecolor'] = self.windCol
+            rcP['savefig.edgecolor'] = self.windCol
 
             for key, value in rcP.iteritems():
                 matplotlib.rcParams[key] = value
@@ -251,6 +261,11 @@ class BinaryWidget(QtGui.QWidget):
         """
         self.bpsr = bpsr
         self.fillModelPars()
+
+        # Erase all the plotting information, and then show the plot
+        self.plotdict = {}
+        self.showplot = None
+        self.setPlotPeriods()
         self.updatePlot()
 
     def openPulsar(self, parfilename=None, perfilename=None):
@@ -308,14 +323,7 @@ class BinaryWidget(QtGui.QWidget):
         pass the validator tests, we propagate these values into the parameter
         dictionary
         """
-        all_ok = True
-        for pw in self.parameterbox_pw:
-            # Check the validators first
-            validator = pw['lineedit'].validator()
-            if validator.validate(pw['lineedit'].text(), 0)[0] != QtGui.QValidator.Acceptable:
-                all_ok = False
-
-        if all_ok:
+        if self.validateModelPars():
             for pw in self.parameterbox_pw:
                 pid = pw['checkbox'].text()
 
@@ -332,6 +340,19 @@ class BinaryWidget(QtGui.QWidget):
                     # Add the parameter, so do some extra stuff?
                     pass
 
+    def validateModelPars(self):
+        """
+        Returns True when all binary model parameter fields validate
+        """
+        all_ok = True
+        for pw in self.parameterbox_pw:
+            # Check the validators first
+            validator = pw['lineedit'].validator()
+            if validator.validate(pw['lineedit'].text(), 0)[0] != QtGui.QValidator.Acceptable:
+                all_ok = False
+
+        return all_ok
+
 
     def changedBinaryModel(self):
         """
@@ -343,11 +364,9 @@ class BinaryWidget(QtGui.QWidget):
         """
         Called when we change the state of the PlotModel checkbox.
         """
-        if bool(self.plotCheckBox.checkState()):
-            self.getModelPars()
-            self.plotModel()
-        else:
-            self.updatePlot()
+        self.plotmodel = bool(self.plotCheckBox.checkState())
+
+        self.updatePlot()
 
     def changedPars(self, *args, **kwargs):
         """
@@ -363,6 +382,11 @@ class BinaryWidget(QtGui.QWidget):
         else:
             color = '#f6989d' # red
         sender.setStyleSheet('QLineEdit { background-color: %s }' % color)
+
+        # If all validate, we need to plot the graph again
+        if self.validateModelPars():
+            #self.getModelPars()
+            self.updatePlot()
 
     def changedParFit(self, *args, **kwargs):
         """
@@ -400,11 +424,177 @@ class BinaryWidget(QtGui.QWidget):
             apars[fitmsk] = plsq[0]
             self.bpsr.vals(which='set', newvals=apars)
             self.fillModelPars()
-            self.plotModel()
+
+            #self.plotModel()
+            self.createPeriodPlot()
+            self.updatePlot()
         else:
             pass
 
-    def rough(self):
+    def createPeriodPlot(self):
+        """
+        Create the plotting information for the period plots
+        """
+        pdp, pdf = {}, {}
+
+        # The period plot
+        xs = np.linspace(min(self.bpsr.mjds), max(self.bpsr.mjds), 2000)
+        ys = self.bpsr.orbitModel(mjds=xs)
+        pdp['plot'] = (xs, ys)
+        pdp['scatter'] = (self.bpsr.mjds, self.bpsr.periods)
+        if len(self.bpsr.mjds) > 0:
+            dx = 0.05 * (max(self.bpsr.mjds) - min(self.bpsr.mjds))
+            dy = 0.05 * (max(self.bpsr.periods) - min(self.bpsr.periods))
+            xlims = (min(self.bpsr.mjds)-dx, max(self.bpsr.mjds)+dx)
+            ylims = (min(self.bpsr.periods)-dy, max(self.bpsr.periods)+dy)
+        else:
+            xlims = (0.0, 1.0)
+            ylims = (0.0, 1.0)
+        pdp['xlim'] = xlims
+        pdp['ylim'] = ylims
+        pdp['xlabel'] = 'MJD'
+        pdp['ylabel'] = 'Pulse period (ms)'
+
+        # The orbit per phase plot
+        phase = np.fmod(self.bpsr.mjds, np.float(self.bpsr['PB'].val)) / \
+            np.float(self.bpsr['PB'].val)
+        xphase = np.fmod(xs, np.float(self.bpsr['PB'].val)) / \
+                np.float(self.bpsr['PB'].val)
+        xinds = np.argsort(xphase)[::-1]
+        pdf['plot'] = (xphase[xinds], ys[xinds])
+        pdf['scatter'] = (phase, self.bpsr.periods)
+        pdf['xlim'] = (0.0, 1.0)
+        pdf['ylim'] = ylims
+        pdf['xlabel'] = 'Phase'
+        pdf['ylabel'] = 'Pulse period (ms)'
+
+        self.plotdict['period'] = pdp
+        self.plotdict['phase'] = pdf
+
+    def createRoughnessPlot(self):
+        """
+        Create the plotting information for the roughness plots
+        """
+        pdr, pdf = {}, {}
+
+        Ntrials = 25000
+        pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
+        rg = self.bpsr.roughness(pb)
+
+        # Roughness
+        pdr['scatter'] = (np.log10(pb), np.log10(rg))
+        pdr['xlabel'] = 'log10(Period)'
+        pdr['ylabel'] = 'log10(Roughness)'
+        pdr['xlim'] = (np.log10(min(pb)), np.log10(max(pb)))
+        pdr['ylim'] = (np.log10(min(rg)), np.log10(max(rg)))
+
+        # Phase roughness at best frequency
+        minind = np.argmin(rg)
+        pbm = pb[minind]
+        phase = np.fmod(self.bpsr.mjds, pbm) / pbm
+        inds = np.argsort(phase)
+        pdf['scatter'] = (phase[inds], self.bpsr.periods[inds])
+        pdf['annotate'] = "Pb = {0:.2f}".format(pbm)
+        pdf['xlabel'] = 'Phase'
+        pdf['ylabel'] = 'Pulse period (ms)'
+        pdf['xlim'] = (0.0, 1.0)
+        pdf['ylim'] = (min(self.bpsr.periods), max(self.bpsr.periods))
+
+        self.plotdict['roughness'] = pdr
+        self.plotdict['roughphase'] = pdf
+
+    def setPlotPeriods(self):
+        """
+        Set the plot information to plot periods, and create the plot if
+        necessary
+        """
+        if not ('period' in self.plotdict and 'phase' in self.plotdict):
+            self.createPeriodPlot()
+
+        self.showplot = 'periodphase'
+
+    def plotPeriods(self):
+        """
+        Show the period plots, create the plot if necessary, and update the plot
+        """
+        self.setPlotPeriods()
+        self.updatePlot()
+
+    def setPlotRough(self):
+        """
+        Set the plot information to plot roughness, and create the plot if
+        necessary
+        """
+        if not ('roughness' in self.plotdict and 'roughphase' in self.plotdict):
+            self.createRoughnessPlot()
+
+        self.showplot = 'roughness'
+
+    def plotRough(self):
+        """
+        Show the roughness plots. Create the plot if necessary
+        """
+        self.setPlotRough()
+        self.updatePlot()
+
+    def updatePlot(self):
+        """
+        Update the active plot
+        """
+        if self.showplot is not None:
+            # Do not plot anything
+            self.setColorScheme(True)
+            self.binFig.clf()
+            self.binAxes1 = self.binFig.add_subplot(211)
+            self.binAxes2 = self.binFig.add_subplot(212)
+            self.binAxes1.grid(True)
+            self.binAxes2.grid(True)
+
+            if self.showplot == 'periodphase':
+                pd = self.plotdict['period']
+                self.binAxes1.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes1.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                self.binAxes1.set_xlabel(pd['xlabel'])
+                self.binAxes1.set_xlabel(pd['ylabel'])
+                self.binAxes1.set_xlim(*pd['xlim'])
+                self.binAxes1.set_ylim(*pd['ylim'])
+                self.binAxes1.yaxis.labelpad = -1
+                if self.plotmodel:
+                    self.binAxes1.plot(*pd['plot'], c='r', linestyle='-')
+
+                pd = self.plotdict['phase']
+                self.binAxes2.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes2.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                self.binAxes2.set_xlabel(pd['xlabel'])
+                self.binAxes2.set_xlabel(pd['ylabel'])
+                self.binAxes2.set_xlim(*pd['xlim'])
+                self.binAxes2.set_ylim(*pd['ylim'])
+                self.binAxes2.yaxis.labelpad = -1
+                if self.plotmodel:
+                    self.binAxes2.plot(*pd['plot'], c='r', linestyle='-')
+            elif self.showplot == 'roughness':
+                pd = self.plotdict['roughness']
+                #self.binAxes1.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes1.scatter(*pd['scatter'], c='darkred', marker='.', s=10)
+                self.binAxes1.set_xlabel(pd['xlabel'])
+                self.binAxes1.set_xlabel(pd['ylabel'])
+                self.binAxes1.set_xlim(*pd['xlim'])
+                self.binAxes1.set_ylim(*pd['ylim'])
+                self.binAxes1.yaxis.labelpad = -1
+
+                pd = self.plotdict['roughphase']
+                #self.binAxes2.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes2.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                self.binAxes2.set_xlabel(pd['xlabel'])
+                self.binAxes2.set_xlabel(pd['ylabel'])
+                self.binAxes2.set_xlim(*pd['xlim'])
+                self.binAxes2.set_ylim(*pd['ylim'])
+                self.binAxes2.yaxis.labelpad = -1
+
+            self.binCanvas.draw()
+            self.setColorScheme(False)
+
+    def plotrough_old(self):
         """
         Play around with the roughness
         """
@@ -414,8 +604,8 @@ class BinaryWidget(QtGui.QWidget):
         ax1 = self.binFig.add_subplot(211)
         ax2 = self.binFig.add_subplot(212)
 
-        Ntrials = 10000
-        pb = 10**(np.linspace(np.log10(1.0e-3), np.log10(1.0e4), Ntrials))
+        Ntrials = 25000
+        pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
         rg = self.bpsr.roughness(pb)
 
         #inds = np.logical_and((pb > 0.3),(pb < 0.34))
@@ -430,11 +620,13 @@ class BinaryWidget(QtGui.QWidget):
 
         minind = np.argmin(rg)
         pbm = pb[minind]
-        print("Min R Pb = {0}".format(pbm))
         phase = np.fmod(self.bpsr.mjds, pbm)
         inds = np.argsort(phase)
         ax2.scatter(phase[inds]/pbm, self.bpsr.periods[inds], c='darkred', \
                 marker='.', s=10)
+        ax2.annotate("Pb = {0:.2f}".format(pbm), xy=(0.04, 0.81), \
+                xycoords='axes fraction', bbox=dict(boxstyle="round", \
+                fc=self.windCol))
 
         ax2.set_xlabel('Phase')
         ax2.set_ylabel('P0')
@@ -443,7 +635,7 @@ class BinaryWidget(QtGui.QWidget):
         self.binCanvas.draw()
         self.setColorScheme(False)
 
-    def updatePlot(self):
+    def updatePlot_old(self):
         """
         Update the plot/figure
         """
@@ -484,7 +676,7 @@ class BinaryWidget(QtGui.QWidget):
         self.setColorScheme(False)
         
 
-    def plotModel(self, widget=None):
+    def plotModel_old(self, widget=None):
         """
         Plot the best-fit binary model
         """
