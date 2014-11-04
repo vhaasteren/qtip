@@ -167,6 +167,8 @@ def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
     """
     # TODO: Properly define all the variables, and include equations of all
     #       quantities
+    if ECC < 0.0:
+        return np.inf
 
     k1 = 2*np.pi*A1/(PB*86400.0*np.sqrt(1-ECC*ECC))
 
@@ -290,6 +292,10 @@ class orbitpulsar(object):
             newpar = createOrbitPar(par)
             self.pardict[par] = newpar
 
+        self.mjds = np.zeros(0)
+        self.periods = np.zeros(0)
+        self.periodserrs = np.zeros(0)
+
     def readPerFile(self, perfilename=None, ms=False):
         """
         Read a period-file, in the PRESO (.bestprof) format
@@ -345,6 +351,16 @@ class orbitpulsar(object):
             self['T0'].val = np.float128(self.parf.T0)
             self['OM'].val = np.float128(self.parf.OM)
         else:
+            self['RA'].val = np.float128(0.0)
+            self['DEC'].val = np.float128(0.0)
+            self['P0'].val = np.float128(1.0)
+            self['P1'].val = np.float128(1.0)
+            self['PEPOCH'].val = np.float128(0.0)
+            self['PB'].val = np.float128(1.0)
+            self['ECC'].val = np.float128(0.0)
+            self['A1'].val = np.float128(0.0)
+            self['T0'].val = np.float128(0.0)
+            self['OM'].val = np.float128(0.0)
             self.parfilename = None
 
     def parmask(self, which='fit', pars=None):
@@ -458,3 +474,22 @@ class orbitpulsar(object):
             pardict = self.pardict
 
         return self.periods - self.orbitModel(pardict=pardict)
+
+    def roughness(self, pb):
+        """
+        Calculate the roughness, given an array of binary periods
+
+        Using a modified version of the Roughness as defined in:
+        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+        (Erratum: Freire et al. (2009), MNRAS, 395, Issue 3, pp. 1775-1775)
+        """
+        n = len(pb)
+        R = np.zeros(n)
+
+        for ii, per in enumerate(pb):
+            phase = np.fmod(self.mjds, per)
+            inds = np.argsort(phase)
+
+            R[ii] = np.sum((self.periods[inds][:-1] - self.periods[inds][1:])**2)
+
+        return R

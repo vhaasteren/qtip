@@ -25,6 +25,7 @@ import optparse
 import numpy as np
 import time
 import matplotlib
+import tempfile
 
 import qtpulsar as qp
 import constants
@@ -91,6 +92,17 @@ class QtipWindow(QtGui.QMainWindow):
             # Are we going to open plk straight away?
             self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
                     timfilename=timfile, engine=engine)
+        else:
+            if perfile is None:
+                testpulsar = True
+            else:
+                testpulsar = False
+
+                if parfile is None:
+                    parfile = ""
+
+            self.requestOpenBinary(testpulsar=testpulsar, parfilename=parfile, \
+                    perfilename=perfile)
 
         self.show()
 
@@ -112,10 +124,20 @@ class QtipWindow(QtGui.QMainWindow):
         self.hbox = QtGui.QHBoxLayout()     # HBox contains all widgets
 
         # Create the menu action items
-        self.openParTimAction = QtGui.QAction('&Open', self)        
+        self.openParTimAction = QtGui.QAction('&Open par/tim', self)        
         self.openParTimAction.setShortcut('Ctrl+O')
         self.openParTimAction.setStatusTip('Open par/tim')
         self.openParTimAction.triggered.connect(self.openParTim)
+
+        self.openParPerAction = QtGui.QAction('Open &par/bestprof', self)
+        self.openParPerAction.setShortcut('Ctrl+B')
+        self.openParPerAction.setStatusTip('Open par/bestprof files')
+        self.openParPerAction.triggered.connect(self.openParPer)
+
+        self.openPerAction = QtGui.QAction('Open &bestprof', self)
+        self.openPerAction.setShortcut('Ctrl+D')
+        self.openPerAction.setStatusTip('Open bestprof files')
+        self.openPerAction.triggered.connect(self.openPer)
 
         self.exitAction = QtGui.QAction(QtGui.QIcon('exit.png'), '&Exit', self)        
         self.exitAction.setShortcut('Ctrl+Q')
@@ -169,6 +191,8 @@ class QtipWindow(QtGui.QMainWindow):
         self.menubar = self.menuBar()
         self.fileMenu = self.menubar.addMenu('&File')
         self.fileMenu.addAction(self.openParTimAction)
+        self.fileMenu.addAction(self.openParPerAction)
+        self.fileMenu.addAction(self.openPerAction)
         self.fileMenu.addAction(self.exitAction)
         self.viewMenu = self.menubar.addMenu('&View')
         self.viewMenu.addAction(self.toggleBinaryAction)
@@ -198,7 +222,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.kernel.shell.enable_matplotlib(gui='inline')
 
         # Load the necessary packages in the embedded kernel
-        cell = "import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp"
+        cell = "import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp, libfitorbit as lo"
         self.kernel.shell.run_cell(cell, store_history=False)
 
         # Set the in-kernel matplotlib color scheme to black.
@@ -238,6 +262,7 @@ class QtipWindow(QtGui.QMainWindow):
                 moment, however, we're avoiding it for the sake of testing
                 purposes
         """
+        # TODO: This widget is not really used at the moment
         self.openSomethingWidget = OpenSomethingWidget(parent=self.mainFrame, \
                 openFile=self.requestOpenPlk)
         self.openSomethingWidget.hide()
@@ -373,6 +398,27 @@ class QtipWindow(QtGui.QMainWindow):
         self.mainFrame.setLayout(self.hbox)
         self.mainFrame.show()
 
+    def requestOpenBinary(self, parfilename=None, perfilename=None, \
+            testpulsar=False):
+        """
+        Request to open a file in the binary widget
+
+        @param parfilename:     The parfile to open. If None, ask the user
+        @param perfilename:     The per/bestprof file to open. If None, ask user
+        """
+        self.setQtipLayout(whichWidget='binary', showIPython=self.showIPython)
+
+        if parfilename is None and not testpulsar:
+            parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
+        elif parfilename == "":
+            # We do not need to load a par file
+            parfilename = None
+
+        if perfilename is None and not testpulsar:
+            perfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open per/bestprof file', '~/')
+
+        # Load the pulsar
+        self.openBinaryPulsar(parfilename, perfilename, testpulsar=testpulsar)
 
     def requestOpenPlk(self, parfilename=None, timfilename=None, \
             testpulsar=False, engine='libstempo'):
@@ -391,7 +437,7 @@ class QtipWindow(QtGui.QMainWindow):
             timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
         # Load the pulsar
-        self.openPulsar(parfilename, timfilename, engine=engine, \
+        self.openPlkPulsar(parfilename, timfilename, engine=engine, \
                 testpulsar=testpulsar)
 
     def setMplColorScheme(self, scheme):
@@ -421,22 +467,43 @@ class QtipWindow(QtGui.QMainWindow):
             matplotlib.rcParams[key] = value
 
 
-    def openParTim(self, filename=None, engine='libstempo'):
+    def openParTim(self):
         """
         Open a par-file and a tim-file
         """
-        # Ask the user for a par and tim file, and open these with libstempo
-        if isinstance(filename, str):
-            parfilename = filename
-        else:
-            parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
+        # TODO: obtain the engine from elsewhere
+        engine='libstempo'
 
+        # Ask the user for a par and tim file, and open these with libstempo
+        parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
         timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
         # Load the pulsar
-        self.openPulsar(parfilename, timfilename, engine=engine)
+        self.openPlkPulsar(parfilename, timfilename, engine=engine)
 
-    def openPulsar(self, parfilename, timfilename, engine='libstempo',
+    def openParPer(self):
+        """
+        Open a par-file and a per/bestprof file
+        """
+        # Ask the user for a par and tim file, and open these with libstempo
+        parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
+        perfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open per/bestprof-file', '~/')
+
+        # Load the pulsar
+        self.openBinaryPulsar(parfilename=parfilename, \
+                perfilename=perfilename)
+
+    def openPer(self):
+        """
+        Open a per/bestprof file
+        """
+        # Ask the user for a par and tim file, and open these with libstempo
+        perfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open per/bestprof-file', '~/')
+
+        # Load the pulsar
+        self.openBinaryPulsar(parfilename=None, perfilename=perfilename)
+
+    def openPlkPulsar(self, parfilename, timfilename, engine='libstempo', \
             testpulsar=False):
         """
         Open a pulsar, given a parfile and a timfile
@@ -482,15 +549,63 @@ class QtipWindow(QtGui.QMainWindow):
             self.kernel.shell.run_cell(cell)
             psr = self.kernel.shell.ns_table['user_local']['psr']
         else:
+            print("Engine = ", engine)
             raise NotImplemented("Only works with PINT/libstempo")
 
         # Update the plk widget
         self.plkWidget.setPulsar(psr)
-        self.binaryWidget.setPulsar(psr)
+        #self.binaryWidget.setPulsar(psr)
 
         # Communicating with the kernel goes as follows
         # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
         # print("Embedded, we have:", self.kernel.shell.ns_table['user_local']['foo'])
+
+    def openBinaryPulsar(self, parfilename=None, perfilename=None, \
+            testpulsar=False):
+        """
+        Open a pulsar, given a .bestprof file, and perhaps a par file
+
+        @param parfilename: The name of the par/ephemeris file to open
+        @param perfilename: The name of the .bestprof file to open
+        @param testpulsar:  If True, open the test pulsar (J1756)
+        """
+        print("Loading binary pulsar...")
+        if testpulsar or perfilename is None:
+            # Need to load the test pulsar
+            print("Loading the test pulsar")
+            tperfilename = tempfile.mktemp()
+            tperfile = open(tperfilename, 'w')
+            tperfile.write(constants.J1903PER)
+            #tperfile.write(constants.J1756PER)
+            tperfile.close()
+        else:
+            tperfilename = perfilename
+
+        # Load the per-file
+        cell = "bpsr = lo.orbitpulsar()"
+        self.kernel.shell.run_cell(cell)
+        cell = "bpsr.readPerFile('" + tperfilename +"')"
+        self.kernel.shell.run_cell(cell)
+
+        if testpulsar or perfilename is None:
+            os.remove(tperfilename)
+
+        if testpulsar:
+            tparfilename = tempfile.mktemp()
+            tparfile = open(tparfilename, 'w')
+            tparfile.write(constants.J1903EPH)
+            #tperfile.write(constants.J1756PER)
+            tparfile.close()
+            cell = "bpsr.readParFile('" + tparfilename +"')"
+            self.kernel.shell.run_cell(cell)
+            os.remove(tparfilename)
+        elif parfilename is not None:
+            cell = "bpsr.readParFile('" + parfilename +"')"
+            self.kernel.shell.run_cell(cell)
+
+        bpsr = self.kernel.shell.ns_table['user_local']['bpsr']
+
+        self.binaryWidget.setPulsar(bpsr)
 
 
     def keyPressEvent(self, event, **kwargs):
