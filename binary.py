@@ -29,10 +29,20 @@ import copy
 # For date conversions
 import jdcal        # pip install jdcal
 
+# For angle conversions
+import ephem        # pip install pyephem
+
 import constants
 import qtpulsar as qp
+import tempfile
+from libfitorbit import orbitpulsar
 
+import math 
+from scipy.optimize import leastsq
 
+# Regular expressions for RA and DEC fields
+RAREGEXP = "^(([01]?[0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
+DECREGEXP = "^((-?[0-8]?[0-9]|90):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
 
 class BinaryWidget(QtGui.QWidget):
     """
@@ -41,29 +51,126 @@ class BinaryWidget(QtGui.QWidget):
     @param parent:      Parent window
     """
 
-    def __init__(self, parent=None, **kwargs):
+    def __init__(self, parent=None, parfilename=None, perfilename=None, **kwargs):
         super(BinaryWidget, self).__init__(parent, **kwargs)
 
         self.initBin()
-        self.initBinLayout()
-        self.showVisibleWidgets()
+        #self.openPulsar(parfilename, perfilename)
+        self.fillModelPars()
+        self.updatePlot()
 
-        self.psr = None
         self.parent = parent
 
     def initBin(self):
+        """
+        Initialize all the Widgets, and add them to the layout
+        """
+        numpars = 10
+        self.parameterCols = 2
+        self.parameterRows = int(np.ceil(numpars / self.parameterCols))
+        cblength = 6
+        inplength = 20
+
+        # Create an empty binary pulsar object (read later)
+        self.bpsr = orbitpulsar()
+        self.psrLoaded = False
+        self.blockModelUpdate = False       # Respond to parameter edits yes/no
+
+        # Create an empty dictionary that will carry the plotting information
+        self.plotdict = {}
+        self.showplot = None
+        self.plotmodel = False
+
         self.setMinimumSize(650, 550)
 
-        self.binarybox = QtGui.QVBoxLayout()                    # whole widget
-        self.modelbox = QtGui.QHBoxLayout()                     # model widget
-        self.modelWidget = QtGui.QWidget()                      # model widget
+        # The layout boxes and corresponding widgets
+        self.fullwidgetbox = QtGui.QHBoxLayout()        # whole widget
+        self.operationbox = QtGui.QVBoxLayout()         # operation sect. (left)
+        self.inoutputbox = QtGui.QVBoxLayout()          # in and output (right)
+        self.parameterbox = QtGui.QGridLayout()         # The model parameters
 
-        #self.actionsWidget = BinActionsWidget(parent=self)
-
+        # The binaryModel Combobox Widget
         self.binaryModelCB = QtGui.QComboBox()
+        self.binaryModelCB.addItem('BT')
         self.binaryModelCB.addItem('DD')
         self.binaryModelCB.addItem('T2')
         self.binaryModelCB.addItem('ELL')
+        self.binaryModelCB.setCurrentIndex(0)
+        #self.binaryModelCB.stateChanged.connect(self.changedBinaryModel)
+        self.operationbox.addWidget(self.binaryModelCB)
+
+        # The action buttons
+        self.fitButton = QtGui.QPushButton('Fit Model')
+        self.fitButton.clicked.connect(self.fitModel)
+        self.operationbox.addWidget(self.fitButton)
+
+        # Checkbox for yes/no plot Model
+        self.plotCheckBox = QtGui.QCheckBox('Plot Model')
+        self.plotCheckBox.stateChanged.connect(self.changedPlotModel)
+        self.operationbox.addWidget(self.plotCheckBox)
+
+        # Button for plotting the periods
+        self.periodButton = QtGui.QPushButton('Periods')
+        self.periodButton.clicked.connect(self.plotPeriods)
+        self.operationbox.addWidget(self.periodButton)
+
+        # Button for the Roughness
+        self.roughButton = QtGui.QPushButton('Roughness')
+        self.roughButton.clicked.connect(self.plotRough)
+        self.operationbox.addWidget(self.roughButton)
+
+        # Finish the operation Widget
+        self.operationbox.addStretch(1)
+        self.fullwidgetbox.addLayout(self.operationbox)
+
+        # Place the model boxes on a grid
+        self.parameterbox = QtGui.QGridLayout()
+        self.parameterbox.setSpacing(10)
+
+        # Add all the parameters
+        index = 0
+        bModel = str(self.binaryModelCB.currentText())
+        PARAMS = self.bpsr.bmparams[bModel]
+        self.parameterbox_pw = []
+        for ii in range(self.parameterRows):
+            for jj in range(self.parameterCols):
+                if index < numpars:
+                    # Add another parameter to the grid
+                    offset = jj*(cblength + inplength)
+
+                    checkbox = QtGui.QCheckBox(PARAMS[index], parent=self)
+                    checkbox.stateChanged.connect(self.changedParFit)
+                    self.parameterbox.addWidget(checkbox, \
+                            ii, offset, 1, cblength)
+
+                    # TODO: Figure out how to properly set an edit field
+                    lineedit = QtGui.QLineEdit("", parent=self)
+                    if PARAMS[index] == 'RA':
+                        regexp = QtCore.QRegExp(RAREGEXP)
+                        validator = QtGui.QRegExpValidator(regexp)
+                    elif PARAMS[index] == 'DEC':
+                        regexp = QtCore.QRegExp(DECREGEXP)
+                        validator = QtGui.QRegExpValidator(regexp)
+                    else:
+                        validator = QtGui.QDoubleValidator()
+                    lineedit.setValidator(validator)
+                    lineedit.textChanged.connect(self.changedPars)
+                    self.parameterbox.addWidget(lineedit, \
+                            ii, offset+cblength, 1, inplength)
+
+                    # Send the textChanged signal for the color update
+                    lineedit.textChanged.emit(lineedit.text())
+
+                    # Save the widgets for later reference
+                    self.parameterbox_pw.append(\
+                            dict({'checkbox':checkbox, 'lineedit':lineedit}))
+
+                    # TODO: Make callback functions for when these change
+                    index += 1
+
+
+        # Finalize the parameter Widget
+        self.inoutputbox.addLayout(self.parameterbox)
 
         # We are creating the Figure here, so set the color scheme appropriately
         self.setColorScheme(True)
@@ -81,7 +188,8 @@ class BinaryWidget(QtGui.QWidget):
         # configuration tool in the navigation toolbar wouldn't
         # work.
         #
-        self.binAxes = self.binFig.add_subplot(111)
+        self.binAxes1 = self.binFig.add_subplot(211)
+        self.binAxes2 = self.binFig.add_subplot(212)
 
         # Done creating the Figure. Restore color scheme to defaults
         self.setColorScheme(False)
@@ -90,41 +198,18 @@ class BinaryWidget(QtGui.QWidget):
         self.binCanvas.mpl_connect('button_press_event', self.canvasClickEvent)
         self.binCanvas.mpl_connect('key_press_event', self.canvasKeyEvent)
 
+        # Draw an empty graph
+        self.drawSomething()
+
         # Create the navigation toolbar, tied to the canvas
         #
         #self.mpl_toolbar = NavigationToolbar(self.canvas, self.main_frame)
 
-        # Draw an empty graph
-        self.drawSomething()
+        # Add the figure to the in/output Layout/Widget
+        self.inoutputbox.addWidget(self.binCanvas)
+        self.fullwidgetbox.addLayout(self.inoutputbox)
+        self.setLayout(self.fullwidgetbox)
 
-        # Create the XY choice widget
-        #self.xyChoiceWidget = BinXYPlotWidget(parent=self)
-
-        # At startup, all the widgets are visible
-        self.xyChoiceVisible = True
-        self.fitboxVisible = True
-        self.actionsVisible = True
-        self.layoutMode = 1         # (0 = none, 1 = all, 2 = only fitboxes, 3 = fit & action)
-
-    def initBinLayout(self):
-        """
-        Initialise the basic layout of this plk emulator emulator
-        """
-        # Initialise the plk box
-        #self.plkbox.addWidget(self.fitboxesWidget)
-        self.modelbox.addWidget(self.binaryModelCB)
-        self.modelbox.addStretch(1)
-        self.modelWidget.setLayout(self.modelbox)
-
-        self.binarybox.addWidget(self.modelWidget)
-
-        #self.xyplotbox.addWidget(self.xyChoiceWidget)
-        self.binarybox.addWidget(self.binCanvas)
-
-        #self.plkbox.addLayout(self.xyplotbox)
-
-        #self.plkbox.addWidget(self.actionsWidget)
-        self.setLayout(self.binarybox)
 
     def setColorScheme(self, start=True):
         """
@@ -136,7 +221,7 @@ class BinaryWidget(QtGui.QWidget):
         # Obtain the Widget background color
         color = self.palette().color(QtGui.QPalette.Window)
         r, g, b = color.red(), color.green(), color.blue()
-        rgbcolor = (r/255.0, g/255.0, b/255.0)
+        self.windCol = (r/255.0, g/255.0, b/255.0)
 
         if start:
             # Copy of 'white', because of bug in matplotlib that does not allow
@@ -146,11 +231,11 @@ class BinaryWidget(QtGui.QWidget):
                 self.orig_rcParams[key] = matplotlib.rcParams[key]
 
             rcP = copy.deepcopy(constants.mpl_rcParams_white)
-            rcP['axes.facecolor'] = rgbcolor
-            rcP['figure.facecolor'] = rgbcolor
-            rcP['figure.edgecolor'] = rgbcolor
-            rcP['savefig.facecolor'] = rgbcolor
-            rcP['savefig.edgecolor'] = rgbcolor
+            rcP['axes.facecolor'] = self.windCol
+            rcP['figure.facecolor'] = self.windCol
+            rcP['figure.edgecolor'] = self.windCol
+            rcP['savefig.facecolor'] = self.windCol
+            rcP['savefig.edgecolor'] = self.windCol
 
             for key, value in rcP.iteritems():
                 matplotlib.rcParams[key] = value
@@ -158,123 +243,366 @@ class BinaryWidget(QtGui.QWidget):
             for key, value in constants.mpl_rcParams_black.iteritems():
                 matplotlib.rcParams[key] = value
 
-
     def drawSomething(self):
         """
         When we don't have a pulsar yet, but we have to display something, just draw
         an empty figure
         """
         self.setColorScheme(True)
-        #self.binAxes.clear()
-        #self.binAxes.grid(True)
-        #self.binAxes.set_xlabel('MJD')
-        #self.binAxes.set_ylabel('Residual ($\mu$s)')
-        #self.binCanvas.draw()
+        self.binAxes1.clear()
+        self.binAxes2.clear()
+        self.binCanvas.draw()
         self.setColorScheme(False)
 
-    def setPulsar(self, psr):
+    def setPulsar(self, bpsr):
         """
-        We've got a new pulsar!
-        """
-        self.psr = psr
+        Yay, we have got a new pulsar!
 
-        # Update the fitting checkboxes
-        #self.fitboxesWidget.setPulsar(psr)
-        #self.xyChoiceWidget.setPulsar(psr, self.updatePlot)
-        #self.actionsWidget.setPulsar(psr, self.updatePlot, self.reFit)
-
-        # Draw the residuals
-        #self.xyChoiceWidget.updateChoice()
-        # This screws up the show/hide logistics
-        #self.show()
-
-    def reFit(self):
+        @param bpsr:    New binary pulsar object
         """
-        We need to re-do the fit for this pulsar
+        self.bpsr = bpsr
+        self.fillModelPars()
+        self.psrLoaded = True
+
+        # Erase all the plotting information, and then show the plot
+        self.plotdict = {}
+        self.showplot = None
+        self.setPlotPeriods()
+        self.updatePlot()
+
+    def openPulsar(self, parfilename=None, perfilename=None):
         """
-        if not self.psr is None:
-            self.psr.fit()
+        Open a per/par file.
+
+        TODO: This needs to be in the kernel namespace. But for now, keep it in
+              the widget
+        """
+        # TODO: deprecated
+        if perfilename is None or parfilename is None:
+            # Write temporary files
+            tperfilename = tempfile.mktemp()
+            tparfilename = tempfile.mktemp()
+            tperfile = open(tperfilename, 'w')
+            tparfile = open(tparfilename, 'w')
+            tperfile.write(constants.J1903PER)
+            #tperfile.write(constants.J1756PER)
+            tparfile.write(constants.J1903EPH)
+            #tparfile.write(constants.J1756EPH)
+            tperfile.close()
+            tparfile.close()
+        else:
+            tperfilename = perfilename
+            tparfilename = parfilename
+
+        self.bpsr.readParFile(tparfilename)
+        self.bpsr.readPerFile(tperfilename)
+
+        if perfilename is None or parfilename is None:
+            os.remove(tperfilename)
+            os.remove(tparfilename)
+
+        self.psrLoaded = True
+
+    def fillModelPars(self):
+        """
+        When we have read a new pulsar/model, we need to propagate the newly
+        read parameters back to the input field. That's what we do here.
+        """
+        self.blockModelUpdate = True
+        for pw in self.parameterbox_pw:
+            pid = pw['checkbox'].text()
+
+            if pid in self.bpsr.pars(which='set'):
+                if pid == 'RA':
+                    pw['lineedit'].setText(str(ephem.hours(self.bpsr[pid].val)))
+                elif pid == 'DEC':
+                    pw['lineedit'].setText(str(ephem.degrees(self.bpsr[pid].val)))
+                else:
+                    pw['lineedit'].setText(str(self.bpsr[pid].val))
+
+        self.blockModelUpdate = False
+
+    def getModelPars(self):
+        """
+        Obtain the binary model parameters from the input fields. If they all
+        pass the validator tests, we propagate these values into the parameter
+        dictionary
+        """
+        if self.validateModelPars():
+            for pw in self.parameterbox_pw:
+                pid = pw['checkbox'].text()
+
+                if pid in self.bpsr.pars(which='set'):
+                    if pid == 'RA':
+                        self.bpsr[pid].val = \
+                            np.float128(ephem.hours(str(pw['lineedit'].text())))
+                    elif pid == 'DEC':
+                        self.bpsr[pid].val = \
+                            np.float128(ephem.degrees(str(pw['lineedit'].text())))
+                    else:
+                        self.bpsr[pid].val = pw['lineedit'].text()
+                else:
+                    # Add the parameter, so do some extra stuff?
+                    pass
+
+    def validateModelPars(self):
+        """
+        Returns True when all binary model parameter fields validate
+        """
+        all_ok = True
+        for pw in self.parameterbox_pw:
+            # Check the validators first
+            validator = pw['lineedit'].validator()
+            if validator.validate(pw['lineedit'].text(), 0)[0] != QtGui.QValidator.Acceptable:
+                all_ok = False
+
+        return all_ok
+
+
+    def changedBinaryModel(self):
+        """
+        Called when we change the state of the Binary Model combobox.
+        """
+        pass
+
+    def changedPlotModel(self):
+        """
+        Called when we change the state of the PlotModel checkbox.
+        """
+        self.plotmodel = bool(self.plotCheckBox.checkState())
+
+        self.updatePlot()
+
+    def changedPars(self, *args, **kwargs):
+        """
+        Called when we have changed the parameters of the binary model
+        """
+        sender = self.sender()
+        validator = sender.validator()
+        state = validator.validate(sender.text(), 0)[0]
+        if state == QtGui.QValidator.Acceptable:
+            color = '#c4df9b' # green
+        elif state == QtGui.QValidator.Intermediate:
+            color = '#fff79a' # yellow
+        else:
+            color = '#f6989d' # red
+        sender.setStyleSheet('QLineEdit { background-color: %s }' % color)
+
+        # If all validate, we need to plot the graph again
+        if self.validateModelPars():
+            if self.psrLoaded and not self.blockModelUpdate:
+                self.getModelPars()
+                self.createPeriodPlot()
+                self.updatePlot()
+
+    def changedParFit(self, *args, **kwargs):
+        """
+        Called when we haved set/unset a fitting checkbox of the binary model
+        """
+        for pw in self.parameterbox_pw:
+            pid = pw['checkbox'].text()
+            self.bpsr[pid].fit = pw['checkbox'].checkState()
+
+    def fitModel(self):
+        """
+        Function to perform the fit of selected parameters to the values
+        """
+        # Use a mask to keep track of the parameters we fit for
+        fitmsk = self.bpsr.parmask(which='fit')
+
+        # TODO: RA and DEC are still in strings. Convert them somewhere good
+
+        # Initialize the parameters
+        nfix = np.sum(fitmsk)
+        apars = self.bpsr.vals(which='set')
+        fpars = self.bpsr.vals(which='fit')
+
+        # Create a function for the residuals
+        def resids(pars, bpsr, allpars, mask):
+            allpars[mask] = pars
+            return bpsr.orbitResiduals(parameters=allpars)
+
+        # If there are parameters to fit, do a least-squares minimization
+        if np.sum(fitmsk) > 0:
+            # Perform the least-squares fit
+            plsq = leastsq(resids, np.float64(fpars), args=(self.bpsr, apars, fitmsk))
+
+            # Place the new paramerers back in the boxes
+            apars[fitmsk] = plsq[0]
+            self.bpsr.vals(which='set', newvals=apars)
+
+            self.createPeriodPlot()
             self.updatePlot()
 
-    def newFitParameters(self):
-        """
-        This function is called when we have new fitparameters
+            self.fillModelPars()
+        else:
+            pass
 
-        TODO: callback not used right now
+    def createPeriodPlot(self):
         """
-        pass
+        Create the plotting information for the period plots
+        """
+        pdp, pdf = {}, {}
 
-    def showVisibleWidgets(self):
-        """
-        Show the correct widgets in the plk Window
-        """
-        #self.xyChoiceWidget.setVisible(self.xyChoiceVisible)
-        #self.fitboxesWidget.setVisible(self.fitboxVisible)
-        #self.actionsWidget.setVisible(self.actionsVisible)
-        pass
+        # The period plot
+        xs = np.linspace(min(self.bpsr.mjds), max(self.bpsr.mjds), 2000)
+        ys = self.bpsr.orbitModel(mjds=xs)
+        pdp['plot'] = (xs, ys)
+        pdp['scatter'] = (self.bpsr.mjds, self.bpsr.periods)
+        if len(self.bpsr.mjds) > 0:
+            dx = 0.05 * (max(self.bpsr.mjds) - min(self.bpsr.mjds))
+            dy = 0.05 * (max(self.bpsr.periods) - min(self.bpsr.periods))
+            xlims = (min(self.bpsr.mjds)-dx, max(self.bpsr.mjds)+dx)
+            ylims = (min(self.bpsr.periods)-dy, max(self.bpsr.periods)+dy)
+        else:
+            xlims = (0.0, 1.0)
+            ylims = (0.0, 1.0)
+        pdp['xlim'] = xlims
+        pdp['ylim'] = ylims
+        pdp['xlabel'] = 'MJD'
+        pdp['ylabel'] = 'Pulse period (ms)'
 
+        # The orbit per phase plot
+        phase = np.fmod(self.bpsr.mjds, np.float(self.bpsr['PB'].val)) / \
+            np.float(self.bpsr['PB'].val)
+        xphase = np.fmod(xs, np.float(self.bpsr['PB'].val)) / \
+                np.float(self.bpsr['PB'].val)
+        xinds = np.argsort(xphase)[::-1]
+        pdf['plot'] = (xphase[xinds], ys[xinds])
+        pdf['scatter'] = (phase, self.bpsr.periods)
+        pdf['xlim'] = (0.0, 1.0)
+        pdf['ylim'] = ylims
+        pdf['xlabel'] = 'Phase'
+        pdf['ylabel'] = 'Pulse period (ms)'
+
+        self.plotdict['period'] = pdp
+        self.plotdict['phase'] = pdf
+
+    def createRoughnessPlot(self):
+        """
+        Create the plotting information for the roughness plots
+        """
+        pdr, pdf = {}, {}
+
+        Ntrials = 25000
+        pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
+        rg = self.bpsr.roughness(pb)
+
+        # Roughness
+        pdr['scatter'] = (np.log10(pb), np.log10(rg))
+        pdr['xlabel'] = 'log10(Period)'
+        pdr['ylabel'] = 'log10(Roughness)'
+        pdr['xlim'] = (np.log10(min(pb)), np.log10(max(pb)))
+        pdr['ylim'] = (np.log10(min(rg)), np.log10(max(rg)))
+
+        # Phase roughness at best frequency
+        minind = np.argmin(rg)
+        pbm = pb[minind]
+        phase = np.fmod(self.bpsr.mjds, pbm) / pbm
+        inds = np.argsort(phase)
+        pdf['scatter'] = (phase[inds], self.bpsr.periods[inds])
+        pdf['annotate'] = "Pb = {0:.2f}".format(pbm)
+        pdf['xlabel'] = 'Phase'
+        pdf['ylabel'] = 'Pulse period (ms)'
+        pdf['xlim'] = (0.0, 1.0)
+        pdf['ylim'] = (min(self.bpsr.periods), max(self.bpsr.periods))
+
+        self.plotdict['roughness'] = pdr
+        self.plotdict['roughphase'] = pdf
+
+    def setPlotPeriods(self):
+        """
+        Set the plot information to plot periods, and create the plot if
+        necessary
+        """
+        if not ('period' in self.plotdict and 'phase' in self.plotdict):
+            self.createPeriodPlot()
+
+        self.showplot = 'periodphase'
+
+    def plotPeriods(self):
+        """
+        Show the period plots, create the plot if necessary, and update the plot
+        """
+        self.setPlotPeriods()
+        self.updatePlot()
+
+    def setPlotRough(self):
+        """
+        Set the plot information to plot roughness, and create the plot if
+        necessary
+        """
+        if not ('roughness' in self.plotdict and 'roughphase' in self.plotdict):
+            self.createRoughnessPlot()
+
+        self.showplot = 'roughness'
+
+    def plotRough(self):
+        """
+        Show the roughness plots. Create the plot if necessary
+        """
+        self.setPlotRough()
+        self.updatePlot()
 
     def updatePlot(self):
         """
-        Update the plot/figure
+        Update the active plot
         """
-        if self.psr is not None:
-            # Get a mask for the plotting points
-            msk = self.psr.mask('plot')
+        if self.showplot is not None:
+            # Do not plot anything
+            self.setColorScheme(True)
+            self.binFig.clf()
+            self.binAxes1 = self.binFig.add_subplot(211)
+            self.binAxes2 = self.binFig.add_subplot(212)
+            self.binAxes1.grid(True)
+            self.binAxes2.grid(True)
 
-            #print("Mask has {0} toas".format(np.sum(msk)))
+            if self.showplot == 'periodphase':
+                pd = self.plotdict['period']
+                self.binAxes1.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes1.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                self.binAxes1.set_xlabel(pd['xlabel'])
+                self.binAxes1.set_ylabel(pd['ylabel'])
+                self.binAxes1.set_xlim(*pd['xlim'])
+                self.binAxes1.set_ylim(*pd['ylim'])
+                self.binAxes1.yaxis.labelpad = -1
+                if self.plotmodel:
+                    self.binAxes1.plot(*pd['plot'], c='r', linestyle='-')
 
-            # Get the IDs of the X and Y axis
-            #xid, yid = self.xyChoiceWidget.plotids()
-            xid, yid = 'MJD', 'post-fit'
+                pd = self.plotdict['phase']
+                self.binAxes2.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes2.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                self.binAxes2.set_xlabel(pd['xlabel'])
+                self.binAxes2.set_ylabel(pd['ylabel'])
+                self.binAxes2.set_xlim(*pd['xlim'])
+                self.binAxes2.set_ylim(*pd['ylim'])
+                self.binAxes2.yaxis.labelpad = -1
+                if self.plotmodel:
+                    self.binAxes2.plot(*pd['plot'], c='r', linestyle='-')
+            elif self.showplot == 'roughness':
+                pd = self.plotdict['roughness']
+                #self.binAxes1.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes1.scatter(*pd['scatter'], c='darkred', marker='.', s=10)
+                self.binAxes1.set_xlabel(pd['xlabel'])
+                self.binAxes1.set_ylabel(pd['ylabel'])
+                self.binAxes1.set_xlim(*pd['xlim'])
+                self.binAxes1.set_ylim(*pd['ylim'])
+                self.binAxes1.yaxis.labelpad = -1
 
-            # Retrieve the data
-            x, xerr, xlabel = self.psr.data_from_label(xid)
-            y, yerr, ylabel = self.psr.data_from_label(yid)
+                pd = self.plotdict['roughphase']
+                #self.binAxes2.get_yaxis().get_major_formatter().set_useOffset(False)
+                self.binAxes2.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                self.binAxes2.set_xlabel(pd['xlabel'])
+                self.binAxes2.set_ylabel(pd['ylabel'])
+                self.binAxes2.set_xlim(*pd['xlim'])
+                self.binAxes2.set_ylim(*pd['ylim'])
+                self.binAxes2.yaxis.labelpad = -1
+                self.binAxes2.annotate(pd['annotate'], xy=(0.04, 0.81), \
+                        xycoords='axes fraction', bbox=dict(boxstyle="round", \
+                        fc=self.windCol))
 
-            if x is not None and y is not None and np.sum(msk) > 0:
-                xp = x[msk]
-                yp = y[msk]
-
-                if yerr is not None:
-                    yerrp = yerr[msk]
-                else:
-                    yerrp = None
-
-                self.updatePlotL(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
-            else:
-                raise ValueError("Nothing to plot!")
-
-
-    def updatePlotL(self, x, y, yerr, xlabel, ylabel, title):
-        """
-        Update the plot, given all the plotting info
-        """
-        self.setColorScheme(True)
-        self.binAxes.clear()
-        self.binAxes.grid(True)
-
-        xave = 0.5 * (np.max(x) + np.min(x))
-        xmin = xave - 1.05 * (xave - np.min(x))
-        xmax = xave + 1.05 * (np.max(x) - xave)
-        if yerr is None:
-            yave = 0.5 * (np.max(y) + np.min(y))
-            ymin = yave - 1.05 * (yave - np.min(y))
-            ymax = yave + 1.05 * (np.max(y) - yave)
-            self.binAxes.scatter(x, y, marker='.', c='g')
-        else:
-            yave = 0.5 * (np.max(y+yerr) + np.min(y-yerr))
-            ymin = yave - 1.05 * (yave - np.min(y-yerr))
-            ymax = yave + 1.05 * (np.max(y+yerr) - yave)
-            self.binAxes.errorbar(x, y, yerr=yerr, fmt='.', color='green')
-
-        self.binAxes.axis([xmin, xmax, ymin, ymax])
-        self.binAxes.get_xaxis().get_major_formatter().set_useOffset(False)
-        self.binAxes.set_xlabel(xlabel)
-        self.binAxes.set_ylabel(ylabel)
-        self.binAxes.set_title(title)
-        self.binCanvas.draw()
-        self.setColorScheme(False)
+            self.binCanvas.draw()
+            self.setColorScheme(False)
 
     def setFocusToCanvas(self):
         """
@@ -294,17 +622,17 @@ class BinaryWidget(QtGui.QWidget):
         """
         ind = None
 
-        if self.psr is not None:
+        if self.bpsr is not None:
             # Get a mask for the plotting points
-            msk = self.psr.mask('plot')
+            msk = self.bpsr.mask('plot')
 
             # Get the IDs of the X and Y axis
             #xid, yid = self.xyChoiceWidget.plotids()
             xid, yid = 'MJD', 'post-fit'
 
             # Retrieve the data
-            x, xerr, xlabel = self.psr.data_from_label(xid)
-            y, yerr, ylabel = self.psr.data_from_label(yid)
+            x, xerr, xlabel = self.bpsr.data_from_label(xid)
+            y, yerr, ylabel = self.bpsr.data_from_label(yid)
 
             if np.sum(msk) > 0 and x is not None and y is not None:
                 # Obtain the limits
@@ -358,76 +686,31 @@ class BinaryWidget(QtGui.QWidget):
                 self.close()
             else:
                 self.parent.close()
-        elif (ukey == ord('M') or ukey == ord('m')) and \
-                modifiers == QtCore.Qt.ControlModifier:
-            # Change the window
-            self.layoutMode = (1+self.layoutMode)%4
-            if self.layoutMode == 0:
-                self.xyChoiceVisible = False
-                self.fitboxVisible = False
-                self.actionsVisible = False
-            elif self.layoutMode == 1:
-                self.xyChoiceVisible = True
-                self.fitboxVisible = True
-                self.actionsVisible = True
-            elif self.layoutMode == 2:
-                self.xyChoiceVisible = False
-                self.fitboxVisible = True
-                self.actionsVisible = True
-            elif self.layoutMode == 3:
-                self.xyChoiceVisible = False
-                self.fitboxVisible = True
-                self.actionsVisible = False
-            self.showVisibleWidgets()
         elif ukey == ord('s'):
             # Set START flag at xpos
             # TODO: propagate back to the IPython shell
-            self.psr['START'].set = True
-            self.psr['START'].fit = True
-            self.psr['START'].val = xpos
-            self.updatePlot()
+            pass
         elif ukey == ord('f'):
             # Set FINISH flag as xpos
             # TODO: propagate back to the IPython shell
-            self.psr['FINISH'].set = True
-            self.psr['FINISH'].fit = True
-            self.psr['FINISH'].val = xpos
-            self.updatePlot()
+            pass
         elif ukey == ord('u'):
             # Unzoom
             # TODO: propagate back to the IPython shell
-            self.psr['START'].set = True
-            self.psr['START'].fit = False
-            self.psr['START'].val = np.min(self.psr.toas)
-            self.psr['FINISH'].set = True
-            self.psr['FINISH'].fit = False
-            self.psr['FINISH'].val = np.max(self.psr.toas)
-            self.updatePlot()
+            pass
         elif ukey == ord('d'):
             # Delete data point
             # TODO: propagate back to the IPython shell
-            # TODO: Fix libstempo!
-            ind = self.coord2point(xpos, ypos)
-            #print("Deleted:", self.psr._psr.deleted)
-            # TODO: fix this hack properly in libstempo
-            tempdel = self.psr.deleted
-            tempdel[ind] = True
-            self.psr.deleted = tempdel
-            self.updatePlot()
-            #print("Index deleted = ", ind)
-            #print("Deleted:", self.psr.deleted[ind])
+            pass
         elif ukey == ord('x'):
             # Re-do the fit, using post-fit values of the parameters
-            self.reFit()
+            pass
         elif ukey == QtCore.Qt.Key_Left:
-            # print("Left pressed")
             pass
         else:
             #print("Other key: {0} {1} {2} {3}".format(ukey,
             #    modifiers, ord('M'), QtCore.Qt.ControlModifier))
             pass
-
-        #print("BinaryWidget: key press: ", ukey, xpos, ypos)
 
         if not from_canvas:
             if self.parent is not None:

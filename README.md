@@ -36,6 +36,7 @@ Requirements:
  * pygments
  * pyzmq
  * jdcal
+ * pyephem
 
 Contact
 =======
