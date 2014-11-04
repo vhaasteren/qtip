@@ -55,7 +55,6 @@ class BinaryWidget(QtGui.QWidget):
         super(BinaryWidget, self).__init__(parent, **kwargs)
 
         self.initBin()
-        #self.init_param_file()
         self.openPulsar(parfilename, perfilename)
         self.fillModelPars()
         self.updatePlot()
