@@ -89,6 +89,9 @@ class QtipWindow(QtGui.QMainWindow):
             else:
                 testpulsar = False
 
+            # Also open the Binary Widget
+            self.requestOpenBinary(testpulsar=True)
+
             # Are we going to open plk straight away?
             self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
                     timfilename=timfile, engine=engine)
@@ -569,10 +572,8 @@ class QtipWindow(QtGui.QMainWindow):
         @param perfilename: The name of the .bestprof file to open
         @param testpulsar:  If True, open the test pulsar (J1756)
         """
-        print("Loading binary pulsar...")
         if testpulsar or perfilename is None:
             # Need to load the test pulsar
-            print("Loading the test pulsar")
             tperfilename = tempfile.mktemp()
             tperfile = open(tperfilename, 'w')
             tperfile.write(constants.J1903PER)
