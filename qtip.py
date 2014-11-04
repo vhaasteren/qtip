@@ -81,7 +81,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.setQtipLayout(whichWidget='binary',
                 showIPython=False, firsttime=True)
 
-        if False:
+        if True:
             # We are still in MAJOR testing mode, so open a test-pulsar right away
             # (delete this line when going into production)
             if parfile is None or timfile is None:
@@ -130,12 +130,12 @@ class QtipWindow(QtGui.QMainWindow):
         self.openParTimAction.triggered.connect(self.openParTim)
 
         self.openParPerAction = QtGui.QAction('Open &par/bestprof', self)
-        self.openParPerAction.setShortcut('Ctrl+B')
+        self.openParPerAction.setShortcut('Ctrl+G')
         self.openParPerAction.setStatusTip('Open par/bestprof files')
         self.openParPerAction.triggered.connect(self.openParPer)
 
         self.openPerAction = QtGui.QAction('Open &bestprof', self)
-        self.openPerAction.setShortcut('Ctrl+D')
+        self.openPerAction.setShortcut('Ctrl+H')
         self.openPerAction.setStatusTip('Open bestprof files')
         self.openPerAction.triggered.connect(self.openPer)
 
