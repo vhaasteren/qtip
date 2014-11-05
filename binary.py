@@ -420,8 +420,7 @@ class BinaryWidget(QtGui.QWidget):
         # Create a function for the residuals
         def resids(pars, bpsr, allpars, mask):
             allpars[mask] = pars
-            #return bpsr.orbitResiduals(parameters=allpars)
-            return bpsr.orbitLS(parameters=allpars)
+            return bpsr.orbitResiduals(parameters=allpars, weight=True)
 
         # If there are parameters to fit, do a least-squares minimization
         if np.sum(fitmsk) > 0:
@@ -468,10 +467,10 @@ class BinaryWidget(QtGui.QWidget):
         pdp['ylabel'] = 'Pulse period (ms)'
 
         # The orbit per phase plot
-        phase = np.fmod(self.bpsr.mjds, np.float(self.bpsr['PB'].val)) / \
-            np.float(self.bpsr['PB'].val)
-        xphase = np.fmod(xs, np.float(self.bpsr['PB'].val)) / \
-                np.float(self.bpsr['PB'].val)
+        per = np.float64(self.bpsr['PB'].val)
+        phi = np.fmod(np.float64(self.bpsr['T0'].val), per)
+        phase = np.fmod(self.bpsr.mjds-phi, per) / per
+        xphase = np.fmod(xs-phi, per) / per
         xinds = np.argsort(xphase)[::-1]
         pdf['plot'] = (xphase[xinds], ys[xinds])
         if self.bpsr.periodserrs is None:
@@ -507,7 +506,8 @@ class BinaryWidget(QtGui.QWidget):
         # Phase roughness at best frequency
         minind = np.argmin(rg)
         pbm = pb[minind]
-        phase = np.fmod(self.bpsr.mjds, pbm) / pbm
+        phi = np.fmod(np.float64(self.bpsr['T0'].val), pbm)
+        phase = np.fmod(self.bpsr.mjds-phi, pbm) / pbm
         inds = np.argsort(phase)
         pdf['scatter'] = (phase[inds], self.bpsr.periods[inds])
         pdf['annotate'] = "Pb = {0:.2f}".format(pbm)
@@ -561,12 +561,13 @@ class BinaryWidget(QtGui.QWidget):
             # Do not plot anything
             self.setColorScheme(True)
             self.binFig.clf()
-            self.binAxes1 = self.binFig.add_subplot(211)
-            self.binAxes2 = self.binFig.add_subplot(212)
-            self.binAxes1.grid(True)
-            self.binAxes2.grid(True)
 
             if self.showplot == 'periodphase':
+                self.binAxes1 = self.binFig.add_subplot(211)
+                self.binAxes2 = self.binFig.add_subplot(212)
+                self.binAxes1.grid(True)
+                self.binAxes2.grid(True)
+
                 pd = self.plotdict['period']
                 self.binAxes1.get_yaxis().get_major_formatter().set_useOffset(False)
                 if 'scatter' in pd:
@@ -597,6 +598,13 @@ class BinaryWidget(QtGui.QWidget):
                 if self.plotmodel:
                     self.binAxes2.plot(*pd['plot'], c='r', linestyle='-')
             elif self.showplot == 'roughness':
+                self.binAxes1 = self.binFig.add_subplot(221)
+                self.binAxes2 = self.binFig.add_subplot(222)
+                self.binAxes3 = self.binFig.add_subplot(223)
+                self.binAxes4 = self.binFig.add_subplot(224)
+                #self.binAxes1.grid(True)
+                #self.binAxes2.grid(True)
+
                 pd = self.plotdict['roughness']
                 #self.binAxes1.get_yaxis().get_major_formatter().set_useOffset(False)
                 self.binAxes1.scatter(*pd['scatter'], c='darkred', marker='.', s=10)

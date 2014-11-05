@@ -13,6 +13,8 @@ from __future__ import division
 import numpy as np
 import os
 import ephem        # pip install pyephem
+import scipy.interpolate as si
+import scipy.linalg as sl
 
 from utils import eccentric_anomaly
 import fitorbit_parfile as parfile
@@ -161,7 +163,7 @@ def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
     @param ECC:         Eccentricity
     @param A1:          ??
     @param T0:          Time of ascending node (TASC)
-    @param OM:          ??
+    @param OM:          Omega (longitude of periastron) [deg]
     @param RA_RAD:      Pulsar position (right ascension) [rad]
     @param DEC_RAD:     Pulsar position (declination) [rad]
     """
@@ -426,27 +428,38 @@ class orbitpulsar(object):
             rv = tuple(key for key in self.pardict)
         return rv
 
-    def orbitModel(self, mjds=None, pardict=None):
+    def orbitModel(self, mjds=None, pardict=None, parameters=None, which='set',
+            parlist=None):
         """
         Return the model for the pulse period, given the current binary model
         and parameters
 
-        @param mjds:    If not None, use these mjds, instead of the intrinsic
-                        ones
-        @param pardict: If not None, use these parameters, instead of the
-                        intrinsic ones
+        @param mjds:        If not None, use these mjds, instead of the
+                            intrinsic ones
+        @param pardict:     If not None, use these parameters, instead of the
+                            intrinsic ones
+        @param parameters:  Overrides pardict. If not None, use this array of
+                            parameters instead of the intrinsic ones
+        @param which:       If parameters is set, this indicator set which
+                            parameters are actually in the array
+        @param parlist:     (Overrides which) which parameters are in the array
         """
         if mjds is None:
             mj = self.mjds
         else:
             mj = mjds
 
-        if pardict is None:
-            pd = self.pardict
+        if parameters is not None:
+            mask = self.parmask(which=which, pars=parlist)
+            apars = self.vals(which='set')
+            apars[mask] = parameters
+            pardict = array_to_pardict(apars, which=self.binaryModel)
+        elif pardict is not None:
+            pass
         else:
-            pd = pardict
+            pardict = self.pardict
 
-        bmarr = pardict_to_array(pd, which=self.binaryModel)
+        bmarr = pardict_to_array(pardict, which=self.binaryModel)
         pmodel = np.zeros(len(self.mjds))
 
         if self.binaryModel == 'BT':
@@ -456,7 +469,8 @@ class orbitpulsar(object):
 
         return pmodel
 
-    def orbitResiduals(self, pardict=None, parameters=None):
+    def orbitResiduals(self, pardict=None, parameters=None, which='set', \
+            parlist=None, weight=False):
         """
         Return the residuals = data - model for the pulse period, given the
         current binary model and parameters
@@ -465,41 +479,209 @@ class orbitpulsar(object):
                             intrinsic ones
         @param parameters:  Overrides pardict. If not None, use this array of
                             parameters instead of the intrinsic ones
+        @param which:       If parameters is set, this indicator set which
+                            parameters are actually in the array
+        @param parlist:     (Overrides which) which parameters are in the array
+        @param weight:      If True, weight the residuals by their uncertainties
         """
         if parameters is not None:
-            pardict = array_to_pardict(parameters, which=self.binaryModel)
+            mask = self.parmask(which=which, pars=parlist)
+            apars = self.vals(which='set')
+            apars[mask] = parameters
+            pardict = array_to_pardict(apars, which=self.binaryModel)
         elif pardict is not None:
             pass
         else:
             pardict = self.pardict
 
-        return self.periods - self.orbitModel(pardict=pardict)
+        resids = self.periods - self.orbitModel(pardict=pardict)
 
-    def orbitLS(self, pardict=None, parameters=None):
-        residuals = self.orbitResiduals(pardict=pardict, parameters=parameters)
+        if weight and self.periodserrs is not None:
+            resids /= self.periodserrs
 
-        if self.periodserrs is not None:
-            periodserrs = self.periodserrs
-        else:
-            periodserrs = np.ones(len(self.periods))
+        return resids
 
-        return residuals / periodserrs
+    def loglikelihood(self, pardict=None, parameters=None, which='set',
+            parlist=None):
+        """
+        Return the log-likelihood for the data, given the model
 
-    def roughness(self, pb):
+        @param pardict:     If not None, use these parameters, instead of the
+                            intrinsic ones
+        @param parameters:  Overrides pardict. If not None, use this array of
+                            parameters instead of the intrinsic ones
+        @param which:       If parameters is set, this indicator set which
+                            parameters are actually in the array
+        @param parlist:     (Overrides which) which parameters are in the array
+        @return:    The log-likelihood value
+        """
+        if self.periodserrs is None:
+            raise ValueError("Likelihood requires uncertainties")
+
+        n = len(self.periods)
+        xi2 = np.sum(self.orbitResiduals(pardict=pardict, \
+                parameters=parameters, which=which, parlist=parlist, \
+                weight=True)**2)
+        return -0.5*xi2 - np.sum(np.log(self.periodserrs)) - 0.5*n*np.log(2*np.pi)
+
+
+    def roughness_old(self, pb):
         """
         Calculate the roughness, given an array of binary periods
 
-        Using a modified version of the Roughness as defined in:
+        Using the Roughness as defined in:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
-        (Erratum: Freire et al. (2009), MNRAS, 395, Issue 3, pp. 1775-1775)
         """
         n = len(pb)
         R = np.zeros(n)
 
         for ii, per in enumerate(pb):
-            phase = np.fmod(self.mjds, per)
+            phi = np.fmod(np.float64(self['T0'].val), per)
+            phase = np.fmod(self.mjds-phi, per) / per
             inds = np.argsort(phase)
 
             R[ii] = np.sum((self.periods[inds][:-1] - self.periods[inds][1:])**2)
 
         return R
+
+    def roughness_new(self, pb):
+        """
+        Calculate the roughness, given an array of binary periods
+
+        Using a modified version of the Roughness as defined in:
+        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+        """
+        n = len(pb)
+        R = np.zeros(n)
+
+        for ii, per in enumerate(pb):
+            phi = np.fmod(self['T0'].val, per)
+            phase = np.fmod(self.mjds-phi, per)
+            inds = np.argsort(phase)
+
+            phase = phase[inds]
+            periods = self.periods[inds]
+            periodserrs = self.periodserrs[inds]
+            #R[ii] = np.sum((self.periods[inds][:-1] - self.periods[inds][1:])**2)
+            R[ii] = per**2*np.sum((
+                        periodserrs[:-1]*periodserrs[1:] +
+                        (periods[:-1] - periods[1:])**2) /
+                        ((phase[:-1]-phase[1:])**2))
+
+        return R
+
+    def roughness(self, pb):
+        """
+        Calculate the roughness for binary period pb
+        """
+        return self.roughness_old(pb)
+
+    def PbEst(self):
+        """
+        Return an estimate of the binary period using the roughness
+
+        @return Pb
+        """
+        Ntrials = 25000
+        pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
+        rg = self.roughness(pb)
+        
+        minind = np.argmin(rg)
+        return pb[minind]
+
+    def Peo(self, Pb=None, T0=None):
+        """
+        Return the Peven and Podd functions, as defined in:
+        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+        For the interpolation, use a cubic spline
+        
+        @param Pb:  Estimate of the binary period. If not set, use an estimate
+                    obtained through the roughness
+        @param T0:  Estimate of periastron passage. If not set, use the current
+                    value
+
+        @return:    Peven, Podd
+        """
+        if len(self.periods) < 10:
+            raise ValueError("Need more than 10 observations")
+
+        if Pb is None:
+            Pb = self.PbEst()
+
+        if T0 is None:
+            T0 = self['T0'].val
+
+        phi = np.fmod(T0, Pb)
+        phase = np.fmod(self.mjds-phi, Pb) / Pb
+
+        # In order to get correct estimates, we wrap around the phase with three
+        # extra points each way
+        phase_w = np.append(np.append(phase[-3:]-1.0, phase), phase[:3]+1.0)
+        periods_w = np.append(np.append(self.periods[-3:], self.periods), \
+                self.periods[:3])
+
+        func = si.interp1d(phase_w, periods_w, kind='cubic')
+
+        Peven = 0.5 * (func(phase) + func(1.0-phase))
+        Podd = 0.5 * (func(phase) - func(1.0-phase))
+
+        return Peven, Podd
+
+    def oe_ABC_leastsq(self, Peven, Podd):
+        """
+        Calculate OM and ECC from Peven and Podd, using a least-squares fit to
+        the hodograph. Use the method described in:
+        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+
+        @param Peven:   Peven
+        @param Podd:   Podd
+
+        @return OM, ECC, xi2
+        """
+        if len(Peven) != len(Podd) or len(Peven) < 1:
+            raise ValueError("Peven and Podd not compatible with fit")
+        n = len(Peven)
+
+        # Create the design matrix (n x 3)
+        M = np.array([Podd**2, Peven**2, Peven]).T
+        y = np.ones(n)
+
+        # Perform the least-squares fit using an SVD
+        MMt = np.dot(M.T, M)
+        U, s, Vt = sl.svd(MMt)
+        Mi = np.dot(Vt.T * 1.0/s, np.dot(U.T, M.T))
+        x = np.dot(Mi, y)
+
+        # x = [A, B, C]
+        # Below equation A4
+        print(x[0], x[1])
+        OM = np.arctan(np.sqrt(x[1]/x[0])) * RAD2DEG
+        #ECC = x[2] / np.sqrt(2*x[1]*(2-x[1]))
+        ECC = -x[2] * np.sqrt(2*x[1]/(2-x[2])) / (2*x[1])
+
+        xi2 = np.sum((np.dot(M, x) - 1)**2)
+
+        return OM, ECC, xi2
+
+    def BNest(self):
+        """
+        Use the Bhattacharyya & Nityanada method to estimate: Pb, T0, OM, ECC.
+        Described in:
+        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+
+        @return: Pb, T0, OM, ECC
+        """
+        Pb = self.PbEst()
+
+        N = 50
+        T0 = np.linspace(self['T0'].val, self['T0'].val+Pb, N)
+        xi2 = np.zeros(N)
+        OM = np.zeros(N)
+        ECC = np.zeros(N)
+        for ii, t in enumerate(T0):
+            Peven, Podd = self.Peo(Pb=Pb, T0=t)
+            OM[ii], ECC[ii], xi2[ii] = self.oe_ABC_leastsq(Peven, Podd)
+
+        ind = np.argmin(xi2)
+
+        return Pb, T0[ind], OM[ind], ECC[ind], xi2
