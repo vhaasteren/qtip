@@ -38,6 +38,10 @@ Requirements:
  * jdcal
  * pyephem
 
+Background info
+===============
+See more about binary models at on the homepage of [tempo](http://tempo.sourceforge.net/ref_man_sections/binary.txt)
+
 Contact
 =======
  * [_Rutger van Haasteren_](mailto:vhaasteren@gmail.com)
