@@ -486,15 +486,29 @@ class BinaryWidget(QtGui.QWidget):
         self.plotdict['period'] = pdp
         self.plotdict['phase'] = pdf
 
-    def createRoughnessPlot(self):
+    def createRoughnessPlot(self, spacing='cubic'):
         """
         Create the plotting information for the roughness plots
         """
         pdr, pdf = {}, {}
 
-        Ntrials = 25000
-        pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
-        rg = self.bpsr.roughness(pb)
+        if spacing=='log':
+            # Log-spacing when searching
+            Ntrials = 25000
+            pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
+            rg = self.bpsr.roughness(pb)
+        elif spacing=='cubic':
+            # Cubic searching, as advocated in:
+            # Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+            Tmax = np.max(self.bpsr.mjds) - np.min(self.bpsr.mjds)
+            pbmin = 1.0 / (144**3)                # 10 minutes
+            pbmax = Tmax
+            Ntrials = int(144 * (100*np.pi*Tmax**2)**(1.0/3.0))
+            ind = np.arange(Ntrials)
+            dpb = 0.02 / ((144**3)*2*np.pi*Tmax)
+            pb = pbmin + dpb * ind**3
+            rg = self.bpsr.roughness(pb)
+
 
         # Roughness
         pdr['scatter'] = (np.log10(pb), np.log10(rg))
