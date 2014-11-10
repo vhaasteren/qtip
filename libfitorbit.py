@@ -535,6 +535,7 @@ class orbitpulsar(object):
 
         @param pb:  Array with binary periods to try
         """
+        n = len(pb)
         mjds, per = np.meshgrid(self.mjds, pb)
         phi = np.fmod(np.float64(self['T0'].val), per)
         mjds = mjds-phi
@@ -578,7 +579,7 @@ class orbitpulsar(object):
 
         TODO: Test more, the scale value is not obvious.
         """
-        n = len(self.periods)
+        n = len(pb)
         mjds, per = np.meshgrid(self.mjds, pb)
         phi = np.fmod(np.float64(self['T0'].val), per)
         mjds = mjds-phi
