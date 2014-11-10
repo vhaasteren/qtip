@@ -525,7 +525,29 @@ class orbitpulsar(object):
         return -0.5*xi2 - np.sum(np.log(self.periodserrs)) - 0.5*n*np.log(2*np.pi)
 
 
-    def roughness_old(self, pb):
+    def roughness_fast(self, pb):
+        """
+        Calculate the roughness, given an array of binary periods (vectorized
+        version)
+
+        Using the Roughness as defined in:
+        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+
+        @param pb:  Array with binary periods to try
+        """
+        mjds, per = np.meshgrid(self.mjds, pb)
+        phi = np.fmod(np.float64(self['T0'].val), per)
+        mjds = mjds-phi
+
+        periods = self.periods.reshape(len(self.periods), 1).repeat(n, axis=1).T
+        phase = np.fmod(mjds, per) / per
+
+        ps = np.take(periods, np.argsort(phase, axis=1))
+        R = np.sum((ps[:,:-1]-ps[:,1:])**2, axis=1)
+
+        return R
+
+    def roughness_slow(self, pb):
         """
         Calculate the roughness, given an array of binary periods
 
@@ -544,37 +566,48 @@ class orbitpulsar(object):
 
         return R
 
-    def roughness_new(self, pb):
+    def roughness_new(self, pb, scale=0.3):
         """
         Calculate the roughness, given an array of binary periods
 
         Using a modified version of the Roughness as defined in:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+
+        @param pb:      Array with binary periods to try
+        @param scale:   Scale up to which we are sensitive to changes
+
+        TODO: Test more, the scale value is not obvious.
         """
-        n = len(pb)
-        R = np.zeros(n)
+        n = len(self.periods)
+        mjds, per = np.meshgrid(self.mjds, pb)
+        phi = np.fmod(np.float64(self['T0'].val), per)
+        mjds = mjds-phi
 
-        for ii, per in enumerate(pb):
-            phi = np.fmod(self['T0'].val, per)
-            phase = np.fmod(self.mjds-phi, per)
-            inds = np.argsort(phase)
+        periods = self.periods.reshape(len(self.periods), 1).repeat(n, axis=1).T
+        phase = np.fmod(mjds, per) / per
 
-            phase = phase[inds]
-            periods = self.periods[inds]
-            periodserrs = self.periodserrs[inds]
-            #R[ii] = np.sum((self.periods[inds][:-1] - self.periods[inds][1:])**2)
-            R[ii] = per**2*np.sum((
-                        periodserrs[:-1]*periodserrs[1:] +
-                        (periods[:-1] - periods[1:])**2) /
-                        ((phase[:-1]-phase[1:])**2))
+        if self.periodserrs is not None:
+            errs = self.periodserrs.reshape(len(self.periodserrs), 1).repeat(n,
+                    axis=1).T
+            inds = np.argsort(phase, axis=1)
+            ps = np.take(periods, inds)
+            es = np.take(errs, inds)
+            hs = np.take(phase, inds)
+
+            R = np.sum( ((ps[:,:-1]-ps[:,1:])**2/(es[:,:-1]*es[:,1:])) /\
+                    (scale**2+(hs[:,:-1]-hs[:,1:])**2), axis=1)
+        else:
+            ps = np.take(periods, np.argsort(phase, axis=1))
+            R = np.sum((ps[:,:-1]-ps[:,1:])**2, axis=1)
 
         return R
+
 
     def roughness(self, pb):
         """
         Calculate the roughness for binary period pb
         """
-        return self.roughness_old(pb)
+        return self.roughness_new(pb)
 
     def PbEst(self):
         """
