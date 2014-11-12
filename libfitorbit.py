@@ -161,7 +161,7 @@ def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
     @param PEPOCH:      Position EPOCH
     @param PB:          Binary period [days]
     @param ECC:         Eccentricity
-    @param A1:          ??
+    @param A1:          Semi-major axis (Projected?)
     @param T0:          Time of ascending node (TASC)
     @param OM:          Omega (longitude of periastron) [deg]
     @param RA_RAD:      Pulsar position (right ascension) [rad]
@@ -606,22 +606,41 @@ class orbitpulsar(object):
 
     def roughness(self, pb):
         """
-        Calculate the roughness for binary period pb
+        Calculate the roughness for binary period pb (array)
         """
         return self.roughness_new(pb)
 
-    def PbEst(self):
+    def roughnessPlot(self, pbmin=0.007, pbmax=None, frac=0.01):
+        """
+        Calculate the roughness plot
+
+        @param pbmin:   Minimum orbital period to search (7e-3 days = 10min)
+        @param pbmax:   Maximum orbital period to search (Tmax)
+        @param frac:    Minimum fractional change to scan (0.02)
+
+        @return: pb, roughness
+        """
+        if pbmax is None:
+            Tmax = np.max(self.mjds) - np.min(self.mjds)
+            pbmax = Tmax
+
+        Ntrials = int( ((pbmax-pbmin)*Tmax*2*np.pi/frac)**(1.0/3.0)/pbmin )
+        ind = np.arange(Ntrials)
+        dpb = frac * pbmin**3/(2*np.pi*Tmax)
+        pb = pbmin + dpb * ind**3
+        rg = self.roughness(pb)
+
+        return pb, rg
+
+    def PbEst(self, pbmin=0.007, pbmax=None, frac=0.02):
         """
         Return an estimate of the binary period using the roughness
 
         @return Pb
         """
-        Ntrials = 25000
-        pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
-        rg = self.roughness(pb)
-        
-        minind = np.argmin(rg)
-        return pb[minind]
+        pb, rg = self.roughnessPlot(pbmin, pbmax, frac)
+
+        return np.min(pb)
 
     def Peo(self, Pb=None, T0=None):
         """
@@ -643,21 +662,65 @@ class orbitpulsar(object):
             Pb = self.PbEst()
 
         if T0 is None:
-            T0 = self['T0'].val
+            T0 = np.float64(self['T0'].val)
 
         phi = np.fmod(T0, Pb)
         phase = np.fmod(self.mjds-phi, Pb) / Pb
+        ind = np.argsort(phase)
+
+        phase = phase[ind]
+        periods = self.periods[ind]
 
         # In order to get correct estimates, we wrap around the phase with three
         # extra points each way
         phase_w = np.append(np.append(phase[-3:]-1.0, phase), phase[:3]+1.0)
-        periods_w = np.append(np.append(self.periods[-3:], self.periods), \
-                self.periods[:3])
+        periods_w = np.append(np.append(periods[-3:], periods), periods[:3])
 
         func = si.interp1d(phase_w, periods_w, kind='cubic')
 
         Peven = 0.5 * (func(phase) + func(1.0-phase))
         Podd = 0.5 * (func(phase) - func(1.0-phase))
+
+        return Peven, Podd
+
+    def Peo_interp(self, Pb=None, T0=None):
+        """
+        Return the interpolated Peven and Podd for the full phase coverage
+        (for debugging purposes)
+        
+        @param Pb:  Estimate of the binary period. If not set, use an estimate
+                    obtained through the roughness
+        @param T0:  Estimate of periastron passage. If not set, use the current
+                    value
+
+        @return:    Peven, Podd
+        """
+        if len(self.periods) < 10:
+            raise ValueError("Need more than 10 observations")
+
+        if Pb is None:
+            Pb = self.PbEst()
+
+        if T0 is None:
+            T0 = np.float64(self['T0'].val)
+
+        phi = np.fmod(T0, Pb)
+        phase = np.fmod(self.mjds-phi, Pb) / Pb
+        ind = np.argsort(phase)
+
+        phase = phase[ind]
+        periods = self.periods[ind]
+
+        # In order to get correct estimates, we wrap around the phase with three
+        # extra points each way
+        phase_w = np.append(np.append(phase[-3:]-1.0, phase), phase[:3]+1.0)
+        periods_w = np.append(np.append(periods[-3:], periods), periods[:3])
+
+        func = si.interp1d(phase_w, periods_w, kind='cubic')
+
+        newphase = np.linspace(0.01, 0.99, 200)
+        Peven = 0.5 * (func(newphase) + func(1.0-newphase))
+        Podd = 0.5 * (func(newphase) - func(1.0-newphase))
 
         return Peven, Podd
 
@@ -686,14 +749,19 @@ class orbitpulsar(object):
         Mi = np.dot(Vt.T * 1.0/s, np.dot(U.T, M.T))
         x = np.dot(Mi, y)
 
+        xi2 = np.sum((np.dot(M, x) - 1)**2)
+
         # x = [A, B, C]
         # Below equation A4
-        print(x[0], x[1])
-        OM = np.arctan(np.sqrt(x[1]/x[0])) * RAD2DEG
-        #ECC = x[2] / np.sqrt(2*x[1]*(2-x[1]))
-        ECC = -x[2] * np.sqrt(2*x[1]/(2-x[2])) / (2*x[1])
+        #print(x[0], x[1])
 
-        xi2 = np.sum((np.dot(M, x) - 1)**2)
+        if x[1] > 0 and x[0] > 0 and (2-x[2]) > 0:
+            OM = np.arctan(np.sqrt(x[1]/x[0])) * RAD2DEG
+            #ECC = x[2] / np.sqrt(2*x[1]*(2-x[1]))
+            ECC = -x[2] * np.sqrt(2*x[1]/(2-x[2])) / (2*x[1])
+        else:
+            OM = 0.0
+            ECC = 0.0
 
         return OM, ECC, xi2
 
@@ -708,7 +776,7 @@ class orbitpulsar(object):
         Pb = self.PbEst()
 
         N = 50
-        T0 = np.linspace(self['T0'].val, self['T0'].val+Pb, N)
+        T0 = np.linspace(np.float64(self['T0'].val), np.float64(self['T0'].val)+Pb, N)
         xi2 = np.zeros(N)
         OM = np.zeros(N)
         ECC = np.zeros(N)

@@ -26,9 +26,6 @@ import numpy as np
 import time
 import copy
 
-# For date conversions
-import jdcal        # pip install jdcal
-
 # For angle conversions
 import ephem        # pip install pyephem
 
@@ -393,6 +390,7 @@ class BinaryWidget(QtGui.QWidget):
             if self.psrLoaded and not self.blockModelUpdate:
                 self.getModelPars()
                 self.createPeriodPlot()
+                #self.createRoughnessPlot()
                 self.updatePlot()
 
     def changedParFit(self, *args, **kwargs):
@@ -491,24 +489,10 @@ class BinaryWidget(QtGui.QWidget):
         Create the plotting information for the roughness plots
         """
         pdr, pdf = {}, {}
+        pdeo = {}
 
-        if spacing=='log':
-            # Log-spacing when searching
-            Ntrials = 25000
-            pb = 10**(np.linspace(np.log10(1.0e-4), np.log10(1.0e4), Ntrials))
-            rg = self.bpsr.roughness(pb)
-        elif spacing=='cubic':
-            # Cubic searching, as advocated in:
-            # Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
-            Tmax = np.max(self.bpsr.mjds) - np.min(self.bpsr.mjds)
-            pbmin = 1.0 / (144**3)                # 10 minutes
-            pbmax = Tmax
-            Ntrials = int(144 * (100*np.pi*Tmax**2)**(1.0/3.0))
-            ind = np.arange(Ntrials)
-            dpb = 0.02 / ((144**3)*2*np.pi*Tmax)
-            pb = pbmin + dpb * ind**3
-            rg = self.bpsr.roughness(pb)
-
+        # Estimate the roughness
+        pb, rg = self.bpsr.roughnessPlot()
 
         # Roughness
         pdr['scatter'] = (np.log10(pb), np.log10(rg))
@@ -530,8 +514,27 @@ class BinaryWidget(QtGui.QWidget):
         pdf['xlim'] = (0.0, 1.0)
         pdf['ylim'] = (min(self.bpsr.periods), max(self.bpsr.periods))
 
+        # Even/odd calculations
+        #PBest, T0est, OMest, ECC, xi2 = self.bpsr.BNest()
+        Pe, Po = self.bpsr.Peo(np.float64(self.bpsr['PB'].val), \
+                T0=np.float64(self.bpsr['T0'].val))
+        Pei, Poi = self.bpsr.Peo_interp(np.float64(self.bpsr['PB'].val), \
+                T0=np.float64(self.bpsr['T0'].val))
+        pdeo['plotcur'] = Pe, Po
+        pdeo['plotint'] = Pei, Poi
+        #pdeo['plotest'] = self.bpsr.Peo(PBest, T0est)
+        #pdeo['xlim'] = np.min(Pei), np.max(Pei)
+        #pdeo['ylim'] = np.min(Poi), np.max(Poi)
+        pdeo['xlim'] = 2*np.min(Pe)-np.max(Pe), 2*np.max(Pe)-np.min(Pe)
+        pdeo['ylim'] = 2*np.min(Po)-np.max(Po), 2*np.max(Po)-np.min(Po)
+        #pdeo['xlim'] = np.min(Pe), np.max(Pe)
+        #pdeo['ylim'] = np.min(Po), np.max(Po)
+        pdeo['xlabel'] = 'P_e'
+        pdeo['ylabel'] = 'P_o'
+
         self.plotdict['roughness'] = pdr
         self.plotdict['roughphase'] = pdf
+        self.plotdict['evenodd'] = pdeo
 
     def setPlotPeriods(self):
         """
@@ -555,8 +558,8 @@ class BinaryWidget(QtGui.QWidget):
         Set the plot information to plot roughness, and create the plot if
         necessary
         """
-        if not ('roughness' in self.plotdict and 'roughphase' in self.plotdict):
-            self.createRoughnessPlot()
+        #if not ('roughness' in self.plotdict and 'roughphase' in self.plotdict):
+        self.createRoughnessPlot()
 
         self.showplot = 'roughness'
 
@@ -639,6 +642,15 @@ class BinaryWidget(QtGui.QWidget):
                 self.binAxes2.annotate(pd['annotate'], xy=(0.04, 0.81), \
                         xycoords='axes fraction', bbox=dict(boxstyle="round", \
                         fc=self.windCol))
+
+                pd = self.plotdict['evenodd']
+                self.binAxes3.plot(*pd['plotint'], c='g', linestyle='-')
+                self.binAxes3.scatter(*pd['plotcur'], c='darkred', marker='.', s=50)
+                #self.binAxes3.scatter(*pd['plotest'], c='green', marker='.', s=50)
+                self.binAxes3.set_xlabel(pd['xlabel'])
+                self.binAxes3.set_ylabel(pd['ylabel'])
+                self.binAxes3.set_xlim(*pd['xlim'])
+                self.binAxes3.set_ylim(*pd['ylim'])
 
             self.binCanvas.draw()
             self.setColorScheme(False)
