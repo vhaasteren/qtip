@@ -16,7 +16,6 @@ import ephem        # pip install pyephem
 import scipy.interpolate as si
 import scipy.linalg as sl
 
-from utils import eccentric_anomaly
 import fitorbit_parfile as parfile
 
 try:
@@ -25,9 +24,10 @@ except ImportError:
     from ordereddict import OrderedDict
 
 # Use long doubles for the calculations (from fitorbit)
-DEG2RAD    = np.float128('1.7453292519943295769236907684886127134428718885417e-2')
-RAD2DEG    = np.float128('57.295779513082320876798154814105170332405472466564')
-C           = np.float128('2.99792458e8')
+SECS_PER_DAY    = np.float128('86400.0')
+DEG2RAD         = np.float128('1.7453292519943295769236907684886127134428718885417e-2')
+RAD2DEG         = np.float128('57.295779513082320876798154814105170332405472466564')
+C               = np.float128('2.99792458e8')
 
 
 def pardict_to_array(pardict, which='BT'):
@@ -42,54 +42,42 @@ def pardict_to_array(pardict, which='BT'):
     """
     x = None
     if which=='BT':
-        x = np.zeros(12, dtype=np.float128)
-        if 'RA' in pardict:
-            if isinstance(pardict['RA'].val, basestring):
-                x[0] = np.float128(ephem.hours(str(pardict['RA'].val)))
-            else:
-                x[0] = np.float128(pardict['RA'].val)
-
-        if 'DEC' in pardict:
-            if isinstance(pardict['DEC'].val, basestring):
-                x[1] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
-            else:
-                x[1] = np.float128(pardict['DEC'].val)
-
+        x = np.zeros(10, dtype=np.float128)
         if 'P0' in pardict:
-            x[2] = np.float128(pardict['P0'].val)
+            x[0] = np.float128(pardict['P0'].val)
 
         if 'P1' in pardict:
-            x[3] = np.float128(pardict['P1'].val)
+            x[1] = np.float128(pardict['P1'].val)
 
         if 'PEPOCH' in pardict:
-            x[4] = np.float128(pardict['PEPOCH'].val)
+            x[2] = np.float128(pardict['PEPOCH'].val)
 
         if 'PB' in pardict:
-            x[5] = np.float128(pardict['PB'].val)
+            x[3] = np.float128(pardict['PB'].val)
 
         if 'ECC' in pardict:
-            x[6] = np.float128(pardict['ECC'].val)
+            x[4] = np.float128(pardict['ECC'].val)
 
         if 'A1' in pardict:
-            x[7] = np.float128(pardict['A1'].val)
+            x[5] = np.float128(pardict['A1'].val)
 
         if 'T0' in pardict:
-            x[8] = np.float128(pardict['T0'].val)
+            x[6] = np.float128(pardict['T0'].val)
 
         if 'OM' in pardict:
-            x[9] = np.float128(pardict['OM'].val)
+            x[7] = np.float128(pardict['OM'].val)
 
         if 'RA' in pardict:
             if isinstance(pardict['RA'].val, basestring):
-                x[10] = np.float128(ephem.hours(str(pardict['RA'].val)))
+                x[8] = np.float128(ephem.hours(str(pardict['RA'].val)))
             else:
-                x[10] = np.float128(pardict['RA'].val)
+                x[8] = np.float128(pardict['RA'].val)
 
         if 'DEC' in pardict:
             if isinstance(pardict['DEC'].val, basestring):
-                x[11] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
+                x[9] = np.float128(ephem.degrees(str(pardict['DEC'].val)))
             else:
-                x[11] = np.float128(pardict['DEC'].val)
+                x[9] = np.float128(pardict['DEC'].val)
     else:
         raise NotImplemented("Only BT works for now")
 
@@ -107,7 +95,7 @@ def array_to_pardict(parameters, which='BT'):
     """
     pardict = OrderedDict()
     if which=='BT':
-        #def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
+        #def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, \
         #        OM, RA_RAD, DEC_RAD):
         pardict['RA'] = createOrbitPar('RA')
         pardict['RA'].val = parameters[0]
@@ -149,10 +137,189 @@ def array_to_pardict(parameters, which='BT'):
 
     return pardict
 
-def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
+
+def eccentric_anomaly(E, mean_anomaly):
+    """
+    eccentric_anomaly(mean_anomaly):
+            Return the eccentric anomaly in radians, given a set of mean_anomalies
+            in radians.
+    """
+    ma = np.fmod(mean_anomaly, 2*np.pi)
+    ma = np.where(ma < 0.0, ma+2*np.pi, ma)
+    eccentricity = E
+    ecc_anom_old = ma
+    #print ma
+    ecc_anom = ma + eccentricity*np.sin(ecc_anom_old)
+    iter = 0
+    # This is a simple iteration to solve Kepler's Equation
+
+    if (np.alen(ecc_anom) >1):
+      while (np.maximum.reduce(np.fabs(ecc_anom-ecc_anom_old)) > 5e-15):
+        ecc_anom_old = ecc_anom
+        ecc_anom = ma + eccentricity*np.sin(ecc_anom_old)
+        #print ecc_anom, iter
+        iter+=1
+
+    elif(np.alen(ecc_anom) ==1):
+      while (np.fabs(ecc_anom-ecc_anom_old) > 5e-15):
+        ecc_anom_old = ecc_anom
+        ecc_anom = ma + eccentricity*np.sin(ecc_anom_old)
+        #print ecc_anom, iter
+        iter+=1
+
+    return ecc_anom
+
+
+def eccentric_anomaly2(eccentricity, mean_anomaly):
+    """
+    eccentric_anomaly(mean_anomaly):
+    Return the eccentric anomaly in radians, given a set of mean_anomalies
+    in radians.
+    """
+    TWOPI = 2 * np.pi
+    ma = np.fmod(mean_anomaly, TWOPI)
+    ma = np.where(ma < 0.0, ma+TWOPI, ma)
+    ecc_anom_old = ma
+    ecc_anom = ma + eccentricity*np.sin(ecc_anom_old)
+
+    # This is a simple iteration to solve Kepler's Equation
+    while (np.maximum.reduce(np.fabs(ecc_anom-ecc_anom_old)) > 5e-15):
+        ecc_anom_old = ecc_anom[:]
+        ecc_anom = ma + eccentricity * np.sin(ecc_anom_old)
+
+    return ecc_anom
+
+def true_from_eccentric(e, eccentric_anomaly):
+    """Compute the true anomaly from the eccentric anomaly.
+
+    Inputs:
+        e - the eccentricity
+        eccentric_anomaly - the eccentric anomaly
+
+    Outputs:
+        true_anomaly - the true anomaly
+        true_anomaly_de - derivative of true anomaly with respect to e
+        true_anomaly_prime - derivative of true anomaly with respect to
+            eccentric anomaly
+    """
+    true_anomaly = 2*np.arctan2(np.sqrt(1+e)*np.sin(eccentric_anomaly/2),
+                                np.sqrt(1-e)*np.cos(eccentric_anomaly/2))
+    true_anomaly_de = (np.sin(eccentric_anomaly)/
+            (np.sqrt(1-e**2)*(1-e*np.cos(eccentric_anomaly))))
+    true_anomaly_prime = (np.sqrt(1-e**2)/(1-e*np.cos(eccentric_anomaly)))
+    return true_anomaly, true_anomaly_de, true_anomaly_prime
+
+
+def BT_delay(t, PB, T0, A1, OM, ECC=0.0, EDOT=0.0, PBDOT=0.0, XDOT=0.0, \
+        OMDOT=0.0, GAMMA=0.0):
+    """
+    Delay due to pulsar binary motion. Model:
+    Blandford & Teukolsky (1976), ApJ, 205, 580-591
+    More precisely, equation (5) of:
+    Taylor & Weisberg (1989), ApJ, 345, 434-450
+
+    @param t:       Time series in MJDs
+    @param PB:      Binary period
+    @param T0:      Epoch of periastron passage
+    @param A1:      Projected semi-major axis (a*sin(i)) on LOS (line-of-sight)
+    @param OM:      Longitude of periastron (omega)
+    @param ECC:     Eccentricity of the orbit [0.0]
+    @param EDOT:    Time-derivative of ECC [0.0]
+    @param PBDOT:   Time-derivative of PB [0.0]
+    @param XDOT:    Time-derivative of a*sin(i)  [0.0]
+    @param OMDOT:   Time-derivative of OMEGA [0.0]
+    @param GAMMA:   Combined gravitational redshift and time dilation
+    """
+    tt0 = (t-np.float128(T0)) * SECS_PER_DAY 
+
+    pb = PB * SECS_PER_DAY
+    ecc = ECC + EDOT * tt0
+
+    # TODO: Check this assertion. This mechanism is probably too strong
+    # Probably better to create a BadParameter signal to raise,
+    # catch it and give a new value to eccentricity?
+    assert np.all(np.logical_and(ecc >= 0, ecc <= 1)), \
+        "BT model: Eccentricity goes out of range"
+
+    asini  = A1 + XDOT * tt0
+
+    # XPBDOT exists in other models, not BT. In Tempo2 it is set to 0.
+    # Check if it even makes sense to keep it here.
+    xpbdot = 0.0
+
+    omega = (OM + OMDOT*tt0/(SECS_PER_DAY*365.25)) * DEG2RAD
+    pbdot = PBDOT
+
+    orbits = tt0 / pb - 0.5 * (pbdot + xpbdot) * (tt0 / pb) ** 2
+    norbits = np.array(np.floor(orbits), dtype=np.long)
+    phase = 2 * np.pi * (orbits - norbits)
+    bige = eccentric_anomaly(ecc, phase)
+
+    tt = 1.0 - ecc ** 2
+    som = np.sin(omega)
+    com = np.cos(omega)
+
+    alpha = asini * som
+    beta = asini * com * np.sqrt(tt)
+    sbe = np.sin(bige)
+    cbe = np.cos(bige)
+    q = alpha * (cbe - ecc) + (beta + GAMMA) * sbe
+    r = -alpha * sbe + beta * cbe
+    s = 1.0 / (1.0 - ecc * cbe)
+
+    return -q + (2 * np.pi / pb) * q * r * s
+
+def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
+        EDOT=0.0, PBDOT=0.0, OMDOT=0.0):
+    """
+    The 'BT' binary model for the pulse period
+
+    @param P0:          The pulse period [sec]
+    @param P1:          The pulse period derivative [sec/sec]
+    @param PEPOCH:      Position EPOCH
+    @param PB:          Binary period [days]
+    @param ECC:         Eccentricity
+    @param A1:          Semi-major axis (Projected?)
+    @param T0:          Time of ascending node (TASC)
+    @param OM:          Omega (longitude of periastron) [deg]
+    @param RA_RAD:      Pulsar position (right ascension) [rad]
+    @param DEC_RAD:     Pulsar position (declination) [rad]
+    @param EDOT:        Time-derivative of ECC [0.0]
+    @param PBDOT:       Time-derivative of PB [0.0]
+    @param OMDOT:   Time-derivative of OMEGA [0.0]
+    """
+    tt0 = (t-T0) * SECS_PER_DAY
+    pb = PB * SECS_PER_DAY
+    ecc = ECC + EDOT * tt0
+    omega = (OM + OMDOT*tt0/(SECS_PER_DAY*365.25)) * DEG2RAD
+    pbdot = PBDOT
+
+    if not np.all(np.logical_and(ecc >= 0.0, ecc <= 1.0)):
+        return np.inf
+
+    # Get the doppler amplitude
+    kappa = 2*np.pi*A1/(PB*SECS_PER_DAY*np.sqrt(1-ecc**2))
+
+    # XPBDOT exists in other models, not BT. In Tempo2 it is set to 0.
+    # Check if it even makes sense to keep it here.
+    xpbdot = 0.0
+
+    # Obtain the true anomaly through the eccentric anomaly
+    orbits = tt0 / pb - 0.5 * (pbdot + xpbdot) * (tt0 / pb) ** 2
+    norbits = np.array(np.floor(orbits), dtype=np.long)
+    phase = 2 * np.pi * (orbits - norbits)
+    bige = eccentric_anomaly(ecc, phase)
+    true_anom = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(bige/2))
+
+    return 1000*(P0+P1*1e-15*(t-PEPOCH)*SECS_PER_DAY) * (1+kappa*np.cos(true_anom+omega) )
+
+
+
+def BT_period_old(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
         OM, RA_RAD, DEC_RAD):
     """
     The 'BT' binary model for the pulse period
+    From Gregory's fitorbit.py
 
     @param DRA_RAD:     ??
     @param DDEC_RAD:    ??
@@ -195,8 +362,6 @@ def BT_period(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
     #sys.exit()
 
     #print RA, DEC
-    #dv = deltav(t, RA, DEC, RA-DRA, DEC-DDEC, 2000.0)
-    #print dv
 
     return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) )
     #return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM) + k1*ECC*np.cos(OM)) ) * (1-dv/3e8)
