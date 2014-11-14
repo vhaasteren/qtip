@@ -28,6 +28,7 @@ SECS_PER_DAY    = np.float128('86400.0')
 DEG2RAD         = np.float128('1.7453292519943295769236907684886127134428718885417e-2')
 RAD2DEG         = np.float128('57.295779513082320876798154814105170332405472466564')
 C               = np.float128('2.99792458e8')
+SUNMASS         = np.float128('4.925490947e-6')
 
 
 def pardict_to_array(pardict, which='BT'):
@@ -269,10 +270,35 @@ def BT_delay(t, PB, T0, A1, OM, ECC=0.0, EDOT=0.0, PBDOT=0.0, XDOT=0.0, \
 
     return -q + (2 * np.pi / pb) * q * r * s
 
+    """
+      if (param==param_pb)
+        return -2.0*M_PI*r*s/pb*SECDAY*tt0/(SECDAY*pb) * SECDAY;  /* fctn(12+j) */
+      else if (param==param_a1)
+        return (som*(cbe-ecc) + com*sbe*sqrt(tt));                /* fctn(9+j) */
+      else if (param==param_ecc)
+        return -(alpha*(1.0+sbe*sbe-ecc*cbe)*tt - beta*(cbe-ecc)*sbe)*s/tt; /* fctn(10+j) */
+      else if (param==param_om)
+        return asini*(com*(cbe-ecc) - som*sqrt(tt)*sbe);          /* fctn(13+j) */
+      else if (param==param_t0)
+        return -2.0*M_PI/pb*r*s*SECDAY;                           /* fctn(11+j) */
+      else if (param==param_pbdot)
+        return 0.5*(-2.0*M_PI*r*s/pb*SECDAY*tt0/(SECDAY*pb))*tt0; /* fctn(18+j) */
+      else if (param==param_a1dot)
+        return (som*(cbe-ecc) + com*sbe*sqrt(tt))*tt0;            /* fctn(24+j) */
+      else if (param==param_omdot)
+        return asini*(com*(cbe-ecc) - som*sqrt(tt)*sbe)*tt0;      /* fctn(14+j) */
+      else if (param==param_edot)                            
+        return (-(alpha*(1.0+sbe*sbe-ecc*cbe)*tt - beta*(cbe-ecc)*sbe)*s/tt)*tt0; /* fctn(25+j) */
+      else if (param==param_gamma) 
+        return sbe;                                               /* fctn(15+j) */
+      return 0.0;
+    """
+
 def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
         EDOT=0.0, PBDOT=0.0, OMDOT=0.0):
     """
-    The 'BT' binary model for the pulse period
+    The 'BT' binary model for the pulse period. Model:
+    Blandford & Teukolsky (1976), ApJ, 205, 580-591
 
     @param P0:          The pulse period [sec]
     @param P1:          The pulse period derivative [sec/sec]
@@ -312,6 +338,8 @@ def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
     true_anom = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(bige/2))
 
     return 1000*(P0+P1*1e-15*(t-PEPOCH)*SECS_PER_DAY) * (1+kappa*np.cos(true_anom+omega) )
+
+
 
 
 
@@ -366,6 +394,126 @@ def BT_period_old(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
     return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) )
     #return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM) + k1*ECC*np.cos(OM)) ) * (1-dv/3e8)
     #return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) ) * (1-20000/C)
+
+
+def DD_delay(t, PB, T0, A1, ECC=0.0, OM=0.0, OMDOT=0.0, am2=0.0, PBDOT=0.0, EDOT=0.0, \
+        XDOT=0.0, XPBDOT=0.0, gamma=0.0, kin=None, sini=None):
+    """
+    Delay due to pulsar binary motion. Model:
+    Damour & Deruelle...
+    """
+    # Sin i
+    if kin is not None:
+        si = np.sin(kin * DEG2RAD)
+    elif sini is not None:
+        si = sini
+    else:
+        si = 0.0
+
+    if si > 1.0:
+        print("Sin I > 1.0. Setting to 1: should probably use DDS model")
+        si = 1.0
+
+    m2 = am2 * SUNMASS
+
+    pb = PB * SECS_PER_DAY
+    an = 2.0*np.pi / pb
+    k = OMDOT / (RAD2DEG*365.25*SECS_PER_DAY*an)
+
+    t0 = T0
+    ct = t
+    tt0 = (ct - t0) * SECS_PER_DAY
+
+    omz = OM
+    xdot = XDOT
+    pbdot = PBDOT
+    edot = EDOT
+    xpbdot = XPBDOT
+
+    x = A1 + xdot*tt0
+    ecc = ECC + edot*tt0
+    er, eth = ecc, ecc
+
+    assert np.all(np.logical_and(ecc >= 0, ecc <= 1)), \
+        "BT model: Eccentricity goes out of range"
+
+    orbits = tt0/pb - 0.5*(pbdot+xpbdot)*(tt0/pb)*(tt0/pb)**2
+    norbits = np.array(np.floor(orbits), dtype=np.long)
+    phase = 2 * np.pi * (orbits - norbits)
+    u = eccentric_anomaly(ecc, phase)
+
+    # DD equations: 17b, 17c, 29, and 46 through 52
+    su = np.sin(u)
+    cu = np.cos(u)
+    onemecu = 1.0-ecc*cu
+    cae = (cu-ecc)/onemecu
+    sae = np.sqrt(1.0-pow(ecc,2))*su/onemecu
+    ae = np.arctan2(sae, cae)
+    ae[ae<0.0] += 2.0*np.pi
+    ae = 2.0 * np.pi * orbits + ae - phase
+    omega = omz / RAD2DEG + k * ae
+    sw = np.sin(omega)
+    cw = np.cos(omega)
+    alpha = x * sw
+    beta = x * np.sqrt(1-eth**2) * cw
+    bg = beta + gamma
+    dre = alpha * (cu-er) + bg * su
+    drep = -alpha * su + bg * cu
+    drepp = -alpha * cu - bg * su
+    anhat = an / onemecu
+
+    # DD equations: 26, 27, 57:
+    sqr1me2 = np.sqrt(1-ecc**2)
+    cume = cu - ecc
+    brace = onemecu - si*(sw*cume+sqr1me2*cw*su)
+    dlogbr = np.log(brace)
+    ds = -2*m2*dlogbr
+
+    #  Now compute d2bar, the orbital time correction in DD equation 42
+    d2bar = dre*(1-anhat*drep+(anhat**2)*(drep**2 + 0.5*dre*drepp - \
+                      0.5*ecc*su*dre*drep/onemecu)) + ds
+    return -d2bar
+
+    """
+      if (param==-1) return torb;
+      
+      /*  Now we need the partial derivatives. Use DD equations 62a - 62k. */
+      csigma=x*(-sw*su+sqr1me2*cw*cu)/onemecu;
+      ce=su*csigma-x*sw-ecc*x*cw*su/sqr1me2;
+      cx=sw*cume+sqr1me2*cw*su;
+      comega=x*(cw*cume-sqr1me2*sw*su);
+      cgamma=su;
+      cdth=-ecc*ecc*x*cw*su/sqr1me2;
+      cm2=-2*dlogbr;
+      csi=2*m2*(sw*cume+sqr1me2*cw*su)/brace; 
+      if (param==param_pb)
+        return -csigma*an*SECDAY*tt0/(pb*SECDAY); 
+      else if (param==param_a1)
+        return cx;
+      else if (param==param_ecc)
+        return ce;
+      else if (param==param_edot)
+        return ce*tt0;
+      else if (param==param_om)
+        return comega;
+      else if (param==param_omdot)
+        return ae*comega/(an*360.0/(2.0*M_PI)*365.25*SECDAY);
+      else if (param==param_t0)
+        return -csigma*an*SECDAY;
+      else if (param==param_pbdot)
+        return 0.5*tt0*(-csigma*an*SECDAY*tt0/(pb*SECDAY));
+      else if (param==param_sini)
+        return csi;
+      else if (param==param_gamma)
+        return cgamma;
+      else if (param==param_m2)
+        return cm2*SUNMASS;
+      else if (param==param_a1dot) /* Also known as xdot */
+        return cx*tt0;
+
+      return 0.0;
+    """
+
 
 
 class orbitpar(object):
