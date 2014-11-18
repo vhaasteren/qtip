@@ -229,7 +229,7 @@ def BT_delay(t, PB, T0, A1, OM, ECC=0.0, EDOT=0.0, PBDOT=0.0, XDOT=0.0, \
     @param PBDOT:   Time-derivative of PB [0.0]
     @param XDOT:    Time-derivative of a*sin(i)  [0.0]
     @param OMDOT:   Time-derivative of OMEGA [0.0]
-    @param GAMMA:   Combined gravitational redshift and time dilation
+    @param GAMMA:   Gravitational redshift and time dilation
     """
     tt0 = (t-np.float128(T0)) * SECS_PER_DAY 
 

@@ -81,6 +81,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.setQtipLayout(whichWidget='binary',
                 showIPython=False, firsttime=True)
 
+        self.pref_engine = engine
         if True:
             # We are still in MAJOR testing mode, so open a test-pulsar right away
             # (delete this line when going into production)
@@ -94,7 +95,7 @@ class QtipWindow(QtGui.QMainWindow):
 
             # Are we going to open plk straight away?
             self.requestOpenPlk(testpulsar=testpulsar, parfilename=parfile, \
-                    timfilename=timfile, engine=engine)
+                    timfilename=timfile, engine=self.pref_engine)
         else:
             if perfile is None:
                 testpulsar = True
@@ -475,14 +476,14 @@ class QtipWindow(QtGui.QMainWindow):
         Open a par-file and a tim-file
         """
         # TODO: obtain the engine from elsewhere
-        engine='libstempo'
+        #engine='libstempo'
 
         # Ask the user for a par and tim file, and open these with libstempo
         parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
         timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
         # Load the pulsar
-        self.openPlkPulsar(parfilename, timfilename, engine=engine)
+        self.openPlkPulsar(parfilename, timfilename, engine=self.pref_engine)
 
     def openParPer(self):
         """
@@ -521,7 +522,7 @@ class QtipWindow(QtGui.QMainWindow):
         else:
             trypint = False
 
-        self.engine, pclass = qp.get_engine(trypint=trypint)
+        engine, pclass = qp.get_engine(trypint=trypint)
 
         if engine == 'libstempo':
             if not testpulsar:
@@ -548,7 +549,12 @@ class QtipWindow(QtGui.QMainWindow):
                 self.kernel.shell.run_cell(cell)
                 psr = self.kernel.shell.ns_table['user_local']['psr']
         elif engine == 'pint':
-            cell = "psr = qp."+pclass+"(testpulsar=True)"
+            if not testpulsar:
+                print("REMOVE THIS LINE: qtip.py 553-554")
+                psr = qp.PPulsar(parfilename, timfilename)
+                cell = "psr = qp."+pclass+"('"+parfilename+"', '"+timfilename+"')"
+            else:
+                cell = "psr = qp."+pclass+"(testpulsar=True)"
             self.kernel.shell.run_cell(cell)
             psr = self.kernel.shell.ns_table['user_local']['psr']
         else:

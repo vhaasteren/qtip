@@ -62,6 +62,7 @@ except ImportError:
 try:
     import pint.models as tm
     from pint.phase import Phase
+    import pint.models.dd as dd
     from pint import toa
     print("PINT available")
     have_pint = True
@@ -170,6 +171,9 @@ class BasePulsar(object):
     """
 
     def __init__(self):
+
+        super(BasePulsar, self).__init__()
+
         self.isolated = ['pre-fit', 'post-fit', 'mjd', 'year', 'serial', \
             'day of year', 'frequency', 'TOA error', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
@@ -179,6 +183,125 @@ class BasePulsar(object):
         self.plot_labels = ['pre-fit', 'post-fit', 'mjd', 'year', 'orbital phase', 'serial', \
             'day of year', 'frequency', 'TOA error', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
+
+        # Some parameters we do not want to add a fitting checkbox for:
+        self.nofitboxpars = ['START', 'FINISH', 'POSEPOCH', 'PEPOCH', 'DMEPOCH', \
+            'EPHVER', 'TZRMJD', 'TZRFRQ', 'TRES']
+
+        # The possible binary pulsar parameters
+        self.binarypars = ['T0', 'T0_1', 'PB', 'PBDOT', 'PB_1', 'ECC', 'ECC_1', 'OM',
+            'OM_1', 'A1', 'A1_1', 'OM', 'OM_1', 'E2DOT', 'EDOT', 'KOM', 'KIN',
+            'SHAPMAX', 'M2', 'MTOT', 'DR', 'DTH', 'A0', 'B0', 'BP', 'BPP', 'DTHETA',
+            'SINI', 'H3', 'STIG', 'H4', 'NHARM', 'GAMMA', 'PBDOT', 'XPBDOT', 'XDOT',
+            'X2DOT', 'XOMDOT', 'AFAC', 'OMDOT', 'OM2DOT', 'ORBPX', 'TASC', 'EPS1',
+            'EPS1DOT', 'EPS2', 'EPS2DOT', 'TZRMJD', 'TZRFRQ', 'TSPAN', 'BPJEP_0',
+            'BPJEP_1', 'BPJPH_0', 'BPJPH_1', 'BPJA1_0', 'BPJA1_1', 'BPJEC_0',
+            'BPJEC_1', 'BPJOM_0', 'BPJOM_1', 'BPJPB_0', 'BPJPB_1']
+
+        self.binmodel_ids = ['BT', 'BTJ', 'BTX', 'ELL1', 'DD', 'DDK', 'DDS',
+            'MSS', 'DDGR', 'T2', 'T2-PTA', 'DDH', 'ELL1H']
+
+        # BTmodel
+        self.binmodel = OrderedDict()
+        self.binmodel['BT'] = OrderedDict({
+            'T0': [50000.0, 60000.0],
+            'PB': [0.01, 3000],
+            'ECC': [0.0, 1.0],
+            'PBDOT': [0.0, 1.0e-8],
+            'A1': [0.0, 1.0e3],
+            'XDOT': [-1.0e-12, 1.0e-12],
+            'OMDOT': [0.0, 5.0],
+            'OM': [0.0, 360.0],
+            'GAMMA': [0.0, 1.0]      # What is the scale of this parameter??
+            })
+        self.binmodel['BTJ'] = OrderedDict({
+            'T0': [50000.0, 60000.0],
+            'PB': [0.01, 3000],
+            'ECC': [0.0, 1.0],
+            'PBDOT': [0.0, 1.0e-8],
+            'XDOT': [-1.0e-12, 1.0e-12],
+            'A1': [0.0, 1.0e3],
+            'OMDOT': [0.0, 5.0],
+            'OM': [0.0, 360.0],
+            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
+            'BPJEP_0': [0.0, 1.0],    # ??
+            'BPJEP_1': [0.0, 1.0],
+            'BPJPH_0': [0.0, 1.0],
+            'BPJPH_1': [0.0, 1.0],
+            'BPJA1_0': [0.0, 1.0],
+            'BPJA1_1': [0.0, 1.0],
+            'BPJEC_0': [0.0, 1.0],
+            'BPJEC_1': [0.0, 1.0],
+            'BPJOM_0': [0.0, 1.0],
+            'BPJOM_1': [0.0, 1.0],
+            'BPJPB_0': [0.0, 1.0],
+            'BPJPB_1': [0.0, 1.0]
+            })
+        self.binmodel['BTX'] = OrderedDict({
+            'T0': [50000.0, 60000.0],
+            'ECC': [0.0, 1.0],
+            'XDOT': [-1.0e-12, 1.0e-12],
+            'A1': [0.0, 1.0e3],
+            'OMDOT': [0.0, 5.0],
+            'OM': [0.0, 360.0],
+            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
+            'FB0': [0.0, 1.0],    # ??
+            'FB1': [0.0, 1.0],    # ??
+            'FB2': [0.0, 1.0],    # ??
+            'FB3': [0.0, 1.0],    # ??
+            'FB4': [0.0, 1.0],    # ??
+            'FB5': [0.0, 1.0],    # ??
+            'FB6': [0.0, 1.0],    # ??
+            'FB7': [0.0, 1.0],    # ??
+            'FB8': [0.0, 1.0],    # ??
+            'FB9': [0.0, 1.0]    # ??
+            })
+        self.binmodel['DD'] = OrderedDict({
+            'SINI': [0.0, 1.0],
+            'M2': [0.0, 10.0],
+            'PB': [0.01, 3000],
+            'OMDOT': [0.0, 5.0],
+            'T0': [50000.0, 60000.0],
+            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
+            'OM': [0.0, 360.0],
+            'A1': [0.0, 1.0e3],
+            'XDOT': [-1.0e-12, 1.0e-12],
+            'PBDOT': [0.0, 1.0e-8],
+            'ECC': [0.0, 1.0],
+            'XPBDOT': [0.0, 1.0],        # Units???  Scale???
+            'EDOT': [0.0, 1.0]        # Units???  Scale???
+            })
+        self.binmodel['DDS'] = OrderedDict({
+            'SHAPMAX': [0.0, 1.0],          # Scale?
+            'SINI': [0.0, 1.0],
+            'M2': [0.0, 10.0],
+            'PB': [0.01, 3000],
+            'OMDOT': [0.0, 5.0],
+            'T0': [50000.0, 60000.0],
+            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
+            'OM': [0.0, 360.0],
+            'A1': [0.0, 1.0e3],
+            'XDOT': [-1.0e-12, 1.0e-12],
+            'PBDOT': [0.0, 1.0e-8],
+            'ECC': [0.0, 1.0],
+            'XPBDOT': [0.0, 1.0],        # Units???  Scale???
+            'EDOT': [0.0, 1.0]        # Units???  Scale???
+            })
+        self.binmodel['DDGR'] = OrderedDict({
+            'T0': [50000.0, 60000.0],
+            'SINI': [0.0, 1.0],
+            'M2': [0.0, 10.0],
+            'PB': [0.01, 3000],
+            'MTOT': [0.0, 10.0],
+            'OM': [0.0, 360.0],
+            'XDOT': [-1.0e-12, 1.0e-12],
+            'PBDOT': [0.0, 1.0e-8],
+            'XPBDOT': [0.0, 1.0],        # Units???  Scale???
+            'A1': [0.0, 1.0e3],
+            'ECC': [0.0, 1.0],
+            'EDOT': [0.0, 1.0]        # Units???  Scale???
+            })
+        # Do DDH, DDK, ELL1, ELL1H, MSS, T2-PTA, T2
 
     @property
     def orbitalphase(self):
@@ -443,6 +566,8 @@ class LTPulsar(BasePulsar):
         @param testpulsar:  If true, load J1744 test pulsar
         """
 
+        super(LTPulsar, self).__init__()
+
         self._interface = "libstempo"
         
         if testpulsar:
@@ -464,125 +589,6 @@ class LTPulsar(BasePulsar):
             self._psr = lt.tempopulsar(parfile, timfile, dofit=False)
         else:
             raise ValueError("No valid pulsar to load")
-
-        # Some parameters we do not want to add a fitting checkbox for:
-        self.nofitboxpars = ['START', 'FINISH', 'POSEPOCH', 'PEPOCH', 'DMEPOCH', \
-            'EPHVER', 'TZRMJD', 'TZRFRQ', 'TRES']
-
-        # The possible binary pulsar parameters
-        self.binarypars = ['T0', 'T0_1', 'PB', 'PBDOT', 'PB_1', 'ECC', 'ECC_1', 'OM',
-            'OM_1', 'A1', 'A1_1', 'OM', 'OM_1', 'E2DOT', 'EDOT', 'KOM', 'KIN',
-            'SHAPMAX', 'M2', 'MTOT', 'DR', 'DTH', 'A0', 'B0', 'BP', 'BPP', 'DTHETA',
-            'SINI', 'H3', 'STIG', 'H4', 'NHARM', 'GAMMA', 'PBDOT', 'XPBDOT', 'XDOT',
-            'X2DOT', 'XOMDOT', 'AFAC', 'OMDOT', 'OM2DOT', 'ORBPX', 'TASC', 'EPS1',
-            'EPS1DOT', 'EPS2', 'EPS2DOT', 'TZRMJD', 'TZRFRQ', 'TSPAN', 'BPJEP_0',
-            'BPJEP_1', 'BPJPH_0', 'BPJPH_1', 'BPJA1_0', 'BPJA1_1', 'BPJEC_0',
-            'BPJEC_1', 'BPJOM_0', 'BPJOM_1', 'BPJPB_0', 'BPJPB_1']
-
-        self.binmodel_ids = ['BT', 'BTJ', 'BTX', 'ELL1', 'DD', 'DDK', 'DDS',
-            'MSS', 'DDGR', 'T2', 'T2-PTA', 'DDH', 'ELL1H']
-
-        # BTmodel
-        self.binmodel = OrderedDict()
-        self.binmodel['BT'] = OrderedDict({
-            'T0': [50000.0, 60000.0],
-            'PB': [0.01, 3000],
-            'ECC': [0.0, 1.0],
-            'PBDOT': [0.0, 1.0e-8],
-            'A1': [0.0, 1.0e3],
-            'XDOT': [-1.0e-12, 1.0e-12],
-            'OMDOT': [0.0, 5.0],
-            'OM': [0.0, 360.0],
-            'GAMMA': [0.0, 1.0]      # What is the scale of this parameter??
-            })
-        self.binmodel['BTJ'] = OrderedDict({
-            'T0': [50000.0, 60000.0],
-            'PB': [0.01, 3000],
-            'ECC': [0.0, 1.0],
-            'PBDOT': [0.0, 1.0e-8],
-            'XDOT': [-1.0e-12, 1.0e-12],
-            'A1': [0.0, 1.0e3],
-            'OMDOT': [0.0, 5.0],
-            'OM': [0.0, 360.0],
-            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
-            'BPJEP_0': [0.0, 1.0],    # ??
-            'BPJEP_1': [0.0, 1.0],
-            'BPJPH_0': [0.0, 1.0],
-            'BPJPH_1': [0.0, 1.0],
-            'BPJA1_0': [0.0, 1.0],
-            'BPJA1_1': [0.0, 1.0],
-            'BPJEC_0': [0.0, 1.0],
-            'BPJEC_1': [0.0, 1.0],
-            'BPJOM_0': [0.0, 1.0],
-            'BPJOM_1': [0.0, 1.0],
-            'BPJPB_0': [0.0, 1.0],
-            'BPJPB_1': [0.0, 1.0]
-            })
-        self.binmodel['BTX'] = OrderedDict({
-            'T0': [50000.0, 60000.0],
-            'ECC': [0.0, 1.0],
-            'XDOT': [-1.0e-12, 1.0e-12],
-            'A1': [0.0, 1.0e3],
-            'OMDOT': [0.0, 5.0],
-            'OM': [0.0, 360.0],
-            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
-            'FB0': [0.0, 1.0],    # ??
-            'FB1': [0.0, 1.0],    # ??
-            'FB2': [0.0, 1.0],    # ??
-            'FB3': [0.0, 1.0],    # ??
-            'FB4': [0.0, 1.0],    # ??
-            'FB5': [0.0, 1.0],    # ??
-            'FB6': [0.0, 1.0],    # ??
-            'FB7': [0.0, 1.0],    # ??
-            'FB8': [0.0, 1.0],    # ??
-            'FB9': [0.0, 1.0]    # ??
-            })
-        self.binmodel['DD'] = OrderedDict({
-            'SINI': [0.0, 1.0],
-            'M2': [0.0, 10.0],
-            'PB': [0.01, 3000],
-            'OMDOT': [0.0, 5.0],
-            'T0': [50000.0, 60000.0],
-            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
-            'OM': [0.0, 360.0],
-            'A1': [0.0, 1.0e3],
-            'XDOT': [-1.0e-12, 1.0e-12],
-            'PBDOT': [0.0, 1.0e-8],
-            'ECC': [0.0, 1.0],
-            'XPBDOT': [0.0, 1.0],        # Units???  Scale???
-            'EDOT': [0.0, 1.0]        # Units???  Scale???
-            })
-        self.binmodel['DDS'] = OrderedDict({
-            'SHAPMAX': [0.0, 1.0],          # Scale?
-            'SINI': [0.0, 1.0],
-            'M2': [0.0, 10.0],
-            'PB': [0.01, 3000],
-            'OMDOT': [0.0, 5.0],
-            'T0': [50000.0, 60000.0],
-            'GAMMA': [0.0, 1.0],      # What is the scale of this parameter??
-            'OM': [0.0, 360.0],
-            'A1': [0.0, 1.0e3],
-            'XDOT': [-1.0e-12, 1.0e-12],
-            'PBDOT': [0.0, 1.0e-8],
-            'ECC': [0.0, 1.0],
-            'XPBDOT': [0.0, 1.0],        # Units???  Scale???
-            'EDOT': [0.0, 1.0]        # Units???  Scale???
-            })
-        self.binmodel['DDGR'] = OrderedDict({
-            'T0': [50000.0, 60000.0],
-            'SINI': [0.0, 1.0],
-            'M2': [0.0, 10.0],
-            'PB': [0.01, 3000],
-            'MTOT': [0.0, 10.0],
-            'OM': [0.0, 360.0],
-            'XDOT': [-1.0e-12, 1.0e-12],
-            'PBDOT': [0.0, 1.0e-8],
-            'XPBDOT': [0.0, 1.0],        # Units???  Scale???
-            'A1': [0.0, 1.0e3],
-            'ECC': [0.0, 1.0],
-            'EDOT': [0.0, 1.0]        # Units???  Scale???
-            })
-        # Do DDH, DDK, ELL1, ELL1H, MSS, T2-PTA, T2
 
     @property
     def name(self):
@@ -787,9 +793,12 @@ class PPulsar(BasePulsar):
         @param testpulsar:  If true, load J1744 test pulsar
         """
 
+        super(PPulsar, self).__init__()
+
         # Create a timing-model
         self._interface = "pint"
         m = tm.StandardTimingModel()
+        #m = tm.DDTimingModel()
         
         if testpulsar:
             # Write a test-pulsar, and open that for testing
@@ -802,7 +811,8 @@ class PPulsar(BasePulsar):
             parfile.close()
             timfile.close()
         elif parfile is not None and timfile is not None:
-            pass
+            parfilename = parfile
+            timfilename = timfile
         else:
             raise ValueError("No valid pulsar to load")
 
@@ -992,7 +1002,8 @@ class PPulsar(BasePulsar):
     @property
     def stoas(self):
         """ Site arrival times """
-        raise NotImplemented("Not done")
+        #raise NotImplemented("Not done")
+        print("WARNING: using _mjds instead of stoas")
         #return self._psr.stoas
         return self._mjds
 
@@ -1049,4 +1060,17 @@ class PPulsar(BasePulsar):
     def savetim(self, timfile):
         #self._psr(timfile)
         pass
+
+    def phasejumps(self):
+        return []
+
+    def add_phasejump(self, mjd, phasejump):
+        pass
+
+    def remove_phasejumps(self):
+        pass
+
+    @property
+    def nphasejumps(self):
+        return self._psr.nphasejumps
 
