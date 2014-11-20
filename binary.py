@@ -76,7 +76,7 @@ class BinaryWidget(QtGui.QWidget):
         # Create an empty dictionary that will carry the plotting information
         self.plotdict = {}
         self.showplot = None
-        self.plotmodel = False
+        self.plotmodel = True
 
         self.setMinimumSize(650, 550)
 
@@ -96,7 +96,12 @@ class BinaryWidget(QtGui.QWidget):
         #self.binaryModelCB.stateChanged.connect(self.changedBinaryModel)
         self.operationbox.addWidget(self.binaryModelCB)
 
-        # The action buttons
+        # Button for parfile writing
+        self.writeButton = QtGui.QPushButton('Write par')
+        self.writeButton.clicked.connect(self.writePar)
+        self.operationbox.addWidget(self.writeButton)
+
+        # Button for fitting the model (least-squares fit)
         self.fitButton = QtGui.QPushButton('Fit Model')
         self.fitButton.clicked.connect(self.fitModel)
         self.operationbox.addWidget(self.fitButton)
@@ -400,6 +405,16 @@ class BinaryWidget(QtGui.QWidget):
         for pw in self.parameterbox_pw:
             pid = pw['checkbox'].text()
             self.bpsr[pid].fit = pw['checkbox'].checkState()
+
+    def writePar(self):
+        """
+        Function to write the timing model parameters to file
+        """
+        fname = QtGui.QFileDialog.getSaveFileName(self, 'Export par-file', \
+                '', 'par-file (*.par)')
+        fname = self.bpsr.writeParFile(fname)
+        print("Par-file written: {0}".format(fname))
+        
 
     def fitModel(self):
         """

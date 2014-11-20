@@ -586,7 +586,6 @@ class orbitpulsar(object):
 
         @param parfilename: timing model parameter file
         """
-        # TODO: Check the units here
         if parfilename is not None and os.path.isfile(parfilename):
             self.parf = parfile.Parfile()
             
@@ -622,6 +621,39 @@ class orbitpulsar(object):
             self['T0'].val = np.float128(0.0)
             self['OM'].val = np.float128(0.0)
             self.parfilename = None
+
+    def writeParFile(self, parfilename):
+        """
+        Write a par-file
+
+        @param parfilename: timing model parameter file
+
+        @return:    the name of the file that's written.
+        """
+        filename = parfilename
+        while os.path.isfile(filename) or os.path.isdir(filename):
+            filename = parfilename + str(np.random.randint(0, 10000))
+
+        if filename is not None and not os.path.isfile(filename) and \
+                self.parf is not None:
+            self.parf.RAJ = str(ephem.hours(self['RA'].val))
+            self.parf.DEC = str(ephem.degrees(self['DEC'].val))
+            self.parf.P0 = self['P0'].val
+            self.parf.F0 = 1.0/self['P0'].val
+            self.parf.P1 = self['P1'].val
+            self.parf.F1 = -self['P1'].val/(self['P0'].val**2)
+            self.parf.PEPOCH = self['PEPOCH'].val
+            self.parf.PB = self['PB'].val
+            self.parf.ECC = self['ECC'].val
+            self.parf.A1 = self['A1'].val
+            self.parf.T0 = self['T0'].val
+            self.parf.OM = self['OM'].val
+
+            self.parf.write(filename)
+        else:
+            raise IOError("Cannot write a valid parfile")
+
+        return filename
 
     def parmask(self, which='fit', pars=None):
         """
@@ -1045,3 +1077,16 @@ class orbitpulsar(object):
         ind = np.argmin(xi2)
 
         return Pb, T0[ind], OM[ind], ECC[ind], xi2
+
+    def simData(self, mjds, perr=1.2e-7):
+        """
+        For the current timing model, generate mock observed periods
+
+        @param mjds:    Array with new observation times
+        @param perr:    Uncertainty of the measurements
+        """
+        nobs = len(mjds)
+        self.periodserrs = np.ones(nobs) * perr
+        self.mjds = np.array(mjds)
+        self.periods = self.orbitModel(mjds = self.mjds)
+
