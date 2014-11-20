@@ -337,63 +337,8 @@ def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
     bige = eccentric_anomaly(ecc, phase)
     true_anom = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(bige/2))
 
-    return 1000*(P0+P1*1e-15*(t-PEPOCH)*SECS_PER_DAY) * (1+kappa*np.cos(true_anom+omega) )
+    return 1000*(P0+P1*(t-PEPOCH)*SECS_PER_DAY) * (1+kappa*np.cos(true_anom+omega) )
 
-
-
-
-
-def BT_period_old(t, DRA_RAD, DDEC_RAD, P0, P1, PEPOCH, PB, ECC, A1, T0, \
-        OM, RA_RAD, DEC_RAD):
-    """
-    The 'BT' binary model for the pulse period
-    From Gregory's fitorbit.py
-
-    @param DRA_RAD:     ??
-    @param DDEC_RAD:    ??
-    @param P0:          The pulse period [sec]
-    @param P1:          The pulse period derivative [sec/sec]
-    @param PEPOCH:      Position EPOCH
-    @param PB:          Binary period [days]
-    @param ECC:         Eccentricity
-    @param A1:          Semi-major axis (Projected?)
-    @param T0:          Time of ascending node (TASC)
-    @param OM:          Omega (longitude of periastron) [deg]
-    @param RA_RAD:      Pulsar position (right ascension) [rad]
-    @param DEC_RAD:     Pulsar position (declination) [rad]
-    """
-    # TODO: Properly define all the variables, and include equations of all
-    #       quantities
-    if ECC < 0.0:
-        return np.inf
-
-    k1 = 2*np.pi*A1/(PB*86400.0*np.sqrt(1-ECC*ECC))
-
-    # Calc easc in rad
-    easc = 2*np.arctan(np.sqrt((1-ECC)/(1+ECC)) * np.tan(-OM*DEG2RAD/2))
-    #print easc
-    epperias = T0 - PB/360.0*(RAD2DEG * easc - RAD2DEG * ECC * np.sin(easc))
-    #print t,epperias
-    mean_anom = 360*(t-epperias)/PB
-    mean_anom = np.fmod(mean_anom,360.0)
-    #if mean_anom<360.0:
-    #  mean_anom+=360.0
-    mean_anom = np.where(np.greater(mean_anom, 360.0), mean_anom-360.0, mean_anom)
-        
-    # Return ecc_anom (in rad) by iteration
-    ecc_anom = eccentric_anomaly(ECC, mean_anom*DEG2RAD)
-
-    # Return true anomaly in deg
-    true_anom = 2*RAD2DEG*np.arctan(np.sqrt((1+ECC)/(1-ECC))*np.tan(ecc_anom/2))
-
-    #print "easc=%f  epperias=%f  mean_anom=%f  ecc_anom=%f  true_anom=%f"%(easc,epperias,mean_anom,ecc_anom,true_anom)
-    #sys.exit()
-
-    #print RA, DEC
-
-    return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) )
-    #return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM) + k1*ECC*np.cos(OM)) ) * (1-dv/3e8)
-    #return 1000*(P0+P1*1e-15*(t-PEPOCH)*86400) * (1+k1*np.cos(DEG2RAD*(true_anom+OM)) ) * (1-20000/C)
 
 
 def DD_delay(t, PB, T0, A1, ECC=0.0, OM=0.0, OMDOT=0.0, am2=0.0, PBDOT=0.0, EDOT=0.0, \
@@ -658,7 +603,7 @@ class orbitpulsar(object):
                 self['DEC'].val = self.parf.DECJ
 
             self['P0'].val = np.float128(self.parf.P0)
-            self['P1'].val = np.float128(self.parf.P1/1e-15)
+            self['P1'].val = np.float128(self.parf.P1)
             self['PEPOCH'].val = np.float128(self.parf.PEPOCH)
             self['PB'].val = np.float128(self.parf.PB)
             self['ECC'].val = np.float128(self.parf.ECC)
