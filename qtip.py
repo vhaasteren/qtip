@@ -397,7 +397,7 @@ class QtipWindow(QtGui.QMainWindow):
         if firsttime:
             # Set position slightly more to the left of the screen, so we can
             # still open IPython
-            self.move(200, 100)
+            self.move(50, 100)
 
         self.mainFrame.setLayout(self.hbox)
         self.mainFrame.show()

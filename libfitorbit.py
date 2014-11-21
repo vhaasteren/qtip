@@ -96,8 +96,6 @@ def array_to_pardict(parameters, which='BT'):
     """
     pardict = OrderedDict()
     if which=='BT':
-        #def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, \
-        #        OM, RA_RAD, DEC_RAD):
         pardict['RA'] = createOrbitPar('RA')
         pardict['RA'].val = parameters[0]
 
@@ -312,7 +310,7 @@ def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
     @param DEC_RAD:     Pulsar position (declination) [rad]
     @param EDOT:        Time-derivative of ECC [0.0]
     @param PBDOT:       Time-derivative of PB [0.0]
-    @param OMDOT:   Time-derivative of OMEGA [0.0]
+    @param OMDOT:       Time-derivative of OMEGA [0.0]
     """
     tt0 = (t-T0) * SECS_PER_DAY
     pb = PB * SECS_PER_DAY
@@ -326,18 +324,60 @@ def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
     # Get the doppler amplitude
     kappa = 2*np.pi*A1/(PB*SECS_PER_DAY*np.sqrt(1-ecc**2))
 
-    # XPBDOT exists in other models, not BT. In Tempo2 it is set to 0.
-    # Check if it even makes sense to keep it here.
-    xpbdot = 0.0
-
     # Obtain the true anomaly through the eccentric anomaly
-    orbits = tt0 / pb - 0.5 * (pbdot + xpbdot) * (tt0 / pb) ** 2
+    orbits = tt0 / pb - 0.5 * pbdot * (tt0 / pb) ** 2
     norbits = np.array(np.floor(orbits), dtype=np.long)
     phase = 2 * np.pi * (orbits - norbits)
     bige = eccentric_anomaly(ecc, phase)
     true_anom = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(bige/2))
 
     return 1000*(P0+P1*(t-PEPOCH)*SECS_PER_DAY) * (1+kappa*np.cos(true_anom+omega) )
+
+
+def BN_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
+        EDOT=0.0, PBDOT=0.0, OMDOT=0.0):
+    """
+    The 'BT' binary model for the pulse period. Model:
+    Blandford & Teukolsky (1976), ApJ, 205, 580-591
+
+    @param P0:          The pulse period [sec]
+    @param P1:          The pulse period derivative [sec/sec]
+    @param PEPOCH:      Position EPOCH
+    @param PB:          Binary period [days]
+    @param ECC:         Eccentricity
+    @param A1:          Semi-major axis (Projected?)
+    @param T0:          Time of ascending node (TASC)
+    @param OM:          Omega (longitude of periastron) [deg]
+    @param RA_RAD:      Pulsar position (right ascension) [rad]
+    @param DEC_RAD:     Pulsar position (declination) [rad]
+    @param EDOT:        Time-derivative of ECC [0.0]
+    @param PBDOT:       Time-derivative of PB [0.0]
+    @param OMDOT:       Time-derivative of OMEGA [0.0]
+    """
+    tt0 = (t-T0) * SECS_PER_DAY
+    pb = PB * SECS_PER_DAY
+    ecc = ECC + EDOT * tt0
+    omega = (OM + OMDOT*tt0/(SECS_PER_DAY*365.25)) * DEG2RAD
+    pbdot = PBDOT
+
+    if not np.all(np.logical_and(ecc >= 0.0, ecc <= 1.0)):
+        return np.inf
+
+    # Obtain the true anomaly through the eccentric anomaly
+    orbits = tt0 / pb - 0.5 * pbdot * (tt0 / pb) ** 2
+    norbits = np.array(np.floor(orbits), dtype=np.long)
+    phase = 2 * np.pi * (orbits - norbits)
+    #bige = eccentric_anomaly(ecc, phase)
+    #true_anom = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(bige/2))
+
+    # Amplitude of the doppler shift
+    amp = 2*np.pi*A1/(PB*SECS_PER_DAY*np.sqrt(1-ecc**2))
+
+    # Get the doppler amplitude
+    Pobs = 1000*(P0+P1*(t-PEPOCH)*SECS_PER_DAY) * (1 + amp*\
+            ((np.cos(phase)+ecc)*np.cos(omega)-np.sin(phase)*np.sin(omega)))
+
+    return Pobs
 
 
 
@@ -719,7 +759,7 @@ class orbitpulsar(object):
         return rv
 
     def orbitModel(self, mjds=None, pardict=None, parameters=None, which='set',
-            parlist=None):
+            parlist=None, model=None):
         """
         Return the model for the pulse period, given the current binary model
         and parameters
@@ -733,6 +773,7 @@ class orbitpulsar(object):
         @param which:       If parameters is set, this indicator set which
                             parameters are actually in the array
         @param parlist:     (Overrides which) which parameters are in the array
+        @param model:       Which binary model to use (None = self.binaryModel)
         """
         if mjds is None:
             mj = self.mjds
@@ -749,12 +790,17 @@ class orbitpulsar(object):
         else:
             pardict = self.pardict
 
+        if model is None:
+            model = self.binaryModel
+
         bmarr = pardict_to_array(pardict, which=self.binaryModel)
         pmodel = np.zeros(len(self.mjds))
 
-        if self.binaryModel == 'BT':
+        if model == 'BT':
             pmodel = BT_period(mj, *bmarr)
-        elif self.binaryModel == 'DD':
+        elif model == 'BN':
+            pmodel = BN_period(mj, *bmarr)
+        elif model  == 'DD':
             raise NotImplemented("Only BT works for now")
 
         return pmodel
@@ -1032,6 +1078,7 @@ class orbitpulsar(object):
         n = len(Peven)
 
         # Create the design matrix (n x 3)
+        # We'll solve the equation A*Peven**2 + B*Podd**2 + C*Podd = 1
         M = np.array([Podd**2, Peven**2, Peven]).T
         y = np.ones(n)
 
@@ -1039,17 +1086,21 @@ class orbitpulsar(object):
 
         # Perform the least-squares fit using an SVD
         MMt = np.dot(M.T, M)
-        U, s, Vt = sl.svd(MMt)
-        Mi = np.dot(Vt.T * 1.0/s, np.dot(U.T, M.T))
-        x = np.dot(Mi, y)
+        #U, s, Vt = sl.svd(MMt)
+        #Mi = np.dot(Vt.T * 1.0/s, np.dot(U.T, M.T))
+        cf = sl.cho_factor(MMt)
+        Mi = sl.cho_solve(cf, M.T)
+        x = np.dot(Mi, y)                   # x = [A, B, C]
+        xi2 = np.sum((np.dot(M, x) - y)**2)
 
-        xi2 = np.sum((np.dot(M, x) - 1)**2)
+        #cf = sl.cho_factor(MMt)
+        #xi2 = np.sum((y-np.dot(M, sl.cho_solve(cf, np.dot(M.T, y))))**2)
 
         # x = [A, B, C]
         # Below equation A4
         #print(x[0], x[1])
 
-        if x[1] > 0 and x[0] > 0 and (2-x[2]) > 0:
+        if x[1]/x[0] >= 0 and x[1]/(2-x[2]) > 0:
             OM = np.arctan(np.sqrt(x[1]/x[0])) * RAD2DEG
             #ECC = x[2] / np.sqrt(2*x[1]*(2-x[1]))
             ECC = -x[2] * np.sqrt(2*x[1]/(2-x[2])) / (2*x[1])
@@ -1057,32 +1108,93 @@ class orbitpulsar(object):
             OM = 0.0
             ECC = 0.0
 
-        return OM, ECC, xi2
+        return OM, ECC, xi2, x
 
-    def BNest(self):
+    def BNest(self, T0=None):
         """
         Use the Bhattacharyya & Nityanada method to estimate: Pb, T0, OM, ECC.
         Described in:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
 
+        @param T0:  Trial values of T0 (set here if None)
+
         @return: Pb, T0, OM, ECC
         """
         Pb = self.PbEst()
 
-        N = 1000
-        T0 = np.linspace(\
-                np.float64(self['T0'].val)-0.5*Pb, \
-                np.float64(self['T0'].val)+0.5*Pb, N)
+        if T0 is None:
+            N = 1000
+            T0 = np.linspace(\
+                    np.float64(self['T0'].val)-0.5*Pb, \
+                    np.float64(self['T0'].val)+0.5*Pb, N)
+        else:
+            N = len(T0)
         xi2 = np.zeros(N)
         OM = np.zeros(N)
         ECC = np.zeros(N)
         for ii, t in enumerate(T0):
             Peven, Podd = self.Peo(Pb=Pb, T0=t)
-            OM[ii], ECC[ii], xi2[ii] = self.oe_ABC_leastsq(Peven, Podd)
+            OM[ii], ECC[ii], xi2[ii], x = self.oe_ABC_leastsq(Peven, Podd)
 
         ind = np.argmin(xi2)
 
-        return Pb, T0[ind], OM[ind], ECC[ind], xi2
+        return Pb, T0[ind], OM[ind], ECC[ind], T0, xi2
+
+    def CEest(self, Pb, T0, om):
+        """
+        Given Pb, T0, om, provide the ML estimate of C and E using a linear
+        least-squares approach
+        """
+        phi = np.fmod(T0, Pb)
+        phase = np.fmod(self.mjds-phi, Pb) / Pb
+
+        M = np.zeros((len(phase), 2))
+        M[:,0] = np.cos(2*np.pi*phase-om)
+        M[:,1] = np.cos(om)
+
+        if self.periodserrs is not None:
+            Sigma = self.periodserrs**2
+        else:
+            Sigma = np.ones_like(self.periods)
+
+        MMt = np.dot(M.T / Sigma, M)
+        cf = sl.cho_factor(MMt)
+        parest = sl.cho_solve(cf, np.dot(M.T / Sigma, self.periods))
+
+        xi2 = np.sum( (self.periods - np.dot(M, parest))**2 / Sigma )
+        c, e = parest[0], parest[1]/parest[0]
+
+        return xi2, c, e
+
+    def RVHest(self, T0=None, om=None):
+        """
+        Instead of searching only over T0 like BN, search over T0 and omega,
+        resulting in a true non-linear least-squares fit.
+        """
+        Pb = self.PbEst()
+        if T0 is None:
+            nT = 10
+            T0 = np.linspace(\
+                    np.float64(self['T0'].val)-0.5*Pb, \
+                    np.float64(self['T0'].val)+0.5*Pb, nT)
+        else:
+            nT = len(T0)
+
+        if om is None:
+            nom = 10
+            om = np.linspace(0.0, 2*np.pi, nom)
+        else:
+            nom = len(om)
+
+        xi2 = np.zeros((nT, nom))
+        cc = np.zeros((nT, nom))
+        ee = np.zeros((nT, nom))
+        for ii in range(nT):
+            for jj in range(nom):
+                xi2[ii, jj], cc[ii, jj], ee[ii, jj] = \
+                        self.CEest(Pb, T0[ii], om[jj])
+
+        return xi2, cc, ee
 
     def simData(self, mjds, perr=1.2e-7):
         """
