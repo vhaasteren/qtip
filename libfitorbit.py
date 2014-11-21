@@ -922,7 +922,7 @@ class orbitpulsar(object):
 
         return pb, rg
 
-    def PbEst(self, pbmin=0.007, pbmax=None, frac=0.02):
+    def PbEst(self, pbmin=0.007, pbmax=None, frac=0.01):
         """
         Return an estimate of the binary period using the roughness
 
@@ -930,18 +930,19 @@ class orbitpulsar(object):
         """
         pb, rg = self.roughnessPlot(pbmin, pbmax, frac)
 
-        return np.min(pb)
+        return pb[np.argmin(rg)]
 
-    def Peo(self, Pb=None, T0=None):
+    def Peo(self, Pb=None, T0=None, kind='linear'):
         """
         Return the Peven and Podd functions, as defined in:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
-        For the interpolation, use a cubic spline
+        For the interpolation, use a method indicated by kind
         
         @param Pb:  Estimate of the binary period. If not set, use an estimate
                     obtained through the roughness
         @param T0:  Estimate of periastron passage. If not set, use the current
                     value
+        #param:     What kind of interpolation to use ('cubic', 'linear', etc.)
 
         @return:    Peven, Podd
         """
@@ -966,14 +967,14 @@ class orbitpulsar(object):
         phase_w = np.append(np.append(phase[-3:]-1.0, phase), phase[:3]+1.0)
         periods_w = np.append(np.append(periods[-3:], periods), periods[:3])
 
-        func = si.interp1d(phase_w, periods_w, kind='cubic')
+        func = si.interp1d(phase_w, periods_w, kind=kind)
 
         Peven = 0.5 * (func(phase) + func(1.0-phase))
         Podd = 0.5 * (func(phase) - func(1.0-phase))
 
         return Peven, Podd
 
-    def Peo_interp(self, Pb=None, T0=None):
+    def Peo_interp(self, Pb=None, T0=None, kind='linear'):
         """
         Return the interpolated Peven and Podd for the full phase coverage
         (for debugging purposes)
@@ -982,6 +983,7 @@ class orbitpulsar(object):
                     obtained through the roughness
         @param T0:  Estimate of periastron passage. If not set, use the current
                     value
+        #param:     What kind of interpolation to use ('cubic', 'linear', etc.)
 
         @return:    Peven, Podd
         """
@@ -1006,13 +1008,13 @@ class orbitpulsar(object):
         phase_w = np.append(np.append(phase[-3:]-1.0, phase), phase[:3]+1.0)
         periods_w = np.append(np.append(periods[-3:], periods), periods[:3])
 
-        func = si.interp1d(phase_w, periods_w, kind='cubic')
+        func = si.interp1d(phase_w, periods_w, kind=kind)
 
         newphase = np.linspace(0.01, 0.99, 200)
         Peven = 0.5 * (func(newphase) + func(1.0-newphase))
         Podd = 0.5 * (func(newphase) - func(1.0-newphase))
 
-        return Peven, Podd
+        return Peven, Podd, newphase, func(newphase)
 
     def oe_ABC_leastsq(self, Peven, Podd):
         """
@@ -1021,7 +1023,7 @@ class orbitpulsar(object):
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
 
         @param Peven:   Peven
-        @param Podd:   Podd
+        @param Podd:    Podd
 
         @return OM, ECC, xi2
         """
@@ -1032,6 +1034,8 @@ class orbitpulsar(object):
         # Create the design matrix (n x 3)
         M = np.array([Podd**2, Peven**2, Peven]).T
         y = np.ones(n)
+
+        # FIXME: This block below is incorrect somehow.
 
         # Perform the least-squares fit using an SVD
         MMt = np.dot(M.T, M)
@@ -1065,8 +1069,10 @@ class orbitpulsar(object):
         """
         Pb = self.PbEst()
 
-        N = 50
-        T0 = np.linspace(np.float64(self['T0'].val), np.float64(self['T0'].val)+Pb, N)
+        N = 1000
+        T0 = np.linspace(\
+                np.float64(self['T0'].val)-0.5*Pb, \
+                np.float64(self['T0'].val)+0.5*Pb, N)
         xi2 = np.zeros(N)
         OM = np.zeros(N)
         ECC = np.zeros(N)

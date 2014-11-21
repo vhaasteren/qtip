@@ -96,8 +96,13 @@ class BinaryWidget(QtGui.QWidget):
         #self.binaryModelCB.stateChanged.connect(self.changedBinaryModel)
         self.operationbox.addWidget(self.binaryModelCB)
 
+        # Button for simulating data
+        self.simButton = QtGui.QPushButton("Simulate Data")
+        self.simButton.clicked.connect(self.simData)
+        self.operationbox.addWidget(self.simButton)
+
         # Button for parfile writing
-        self.writeButton = QtGui.QPushButton('Write par')
+        self.writeButton = QtGui.QPushButton('Write Par')
         self.writeButton.clicked.connect(self.writePar)
         self.operationbox.addWidget(self.writeButton)
 
@@ -406,6 +411,22 @@ class BinaryWidget(QtGui.QWidget):
             pid = pw['checkbox'].text()
             self.bpsr[pid].fit = pw['checkbox'].checkState()
 
+    def simData(self):
+        """
+        Simulate some reasonable data
+        """
+        nobs = 100
+        tmin = np.min(self.bpsr.mjds)
+        tmax = np.max(self.bpsr.mjds)
+        newmjds = np.linspace(tmin, tmax, nobs) + \
+                np.random.randn(nobs) * (tmax-tmin) / (4*nobs)
+        self.bpsr.simData(newmjds)
+
+        if self.showplot == 'roughness':
+            self.createRoughnessPlot()
+        self.createPeriodPlot()
+        self.updatePlot()
+
     def writePar(self):
         """
         Function to write the timing model parameters to file
@@ -458,7 +479,7 @@ class BinaryWidget(QtGui.QWidget):
         pdp, pdf = {}, {}
 
         # The period plot
-        xs = np.linspace(min(self.bpsr.mjds), max(self.bpsr.mjds), 2000)
+        xs = np.linspace(np.min(self.bpsr.mjds), np.max(self.bpsr.mjds), 2000)
         ys = self.bpsr.orbitModel(mjds=xs)
         pdp['plot'] = (xs, ys)
         if self.bpsr.periodserrs is None:
@@ -499,12 +520,15 @@ class BinaryWidget(QtGui.QWidget):
         self.plotdict['period'] = pdp
         self.plotdict['phase'] = pdf
 
-    def createRoughnessPlot(self, spacing='cubic'):
+    def createRoughnessPlot(self, spacing='cubic', useCurrent=True):
         """
         Create the plotting information for the roughness plots
+
+        @param spacing:     'cubic'/'log' spacing for Pb
+        @param useCurrent:  Use current or estimated values for parameters
         """
         pdr, pdf = {}, {}
-        pdeo = {}
+        pdeo, pdi = {}, {}
 
         # Estimate the roughness
         pb, rg = self.bpsr.roughnessPlot()
@@ -530,11 +554,16 @@ class BinaryWidget(QtGui.QWidget):
         pdf['ylim'] = (min(self.bpsr.periods), max(self.bpsr.periods))
 
         # Even/odd calculations
-        #PBest, T0est, OMest, ECC, xi2 = self.bpsr.BNest()
-        Pe, Po = self.bpsr.Peo(np.float64(self.bpsr['PB'].val), \
-                T0=np.float64(self.bpsr['T0'].val))
-        Pei, Poi = self.bpsr.Peo_interp(np.float64(self.bpsr['PB'].val), \
-                T0=np.float64(self.bpsr['T0'].val))
+        if useCurrent:
+            # Use the provided values to make the Even/Odd plots
+            Pe, Po = self.bpsr.Peo(np.float64(self.bpsr['PB'].val), \
+                    T0=np.float64(self.bpsr['T0'].val), kind='linear')
+            Pei, Poi, phasei, fi = \
+                    self.bpsr.Peo_interp(np.float64(self.bpsr['PB'].val), \
+                    T0=np.float64(self.bpsr['T0'].val), kind='linear')
+        else:
+            #PBest, T0est, OMest, ECC, xi2 = self.bpsr.BNest()
+            pass
         pdeo['plotcur'] = Pe, Po
         pdeo['plotint'] = Pei, Poi
         #pdeo['plotest'] = self.bpsr.Peo(PBest, T0est)
@@ -547,9 +576,20 @@ class BinaryWidget(QtGui.QWidget):
         pdeo['xlabel'] = 'P_e'
         pdeo['ylabel'] = 'P_o'
 
+        per = np.float64(self.bpsr['PB'].val)
+        phi = np.fmod(np.float64(self.bpsr['T0'].val), per)
+        phase = np.fmod(self.bpsr.mjds-phi, per) / per
+        pdi['scatter'] = (phase, self.bpsr.periods)
+        pdi['plot'] = (phasei, fi)
+        pdi['xlabel'] = 'Phase'
+        pdi['ylabel'] = 'Pulse period (ms)'
+        pdi['xlim'] = (0.0, 1.0)
+        pdi['ylim'] = (min(self.bpsr.periods), max(self.bpsr.periods))
+
         self.plotdict['roughness'] = pdr
         self.plotdict['roughphase'] = pdf
         self.plotdict['evenodd'] = pdeo
+        self.plotdict['phaseint'] = pdi
 
     def setPlotPeriods(self):
         """
@@ -666,6 +706,15 @@ class BinaryWidget(QtGui.QWidget):
                 self.binAxes3.set_ylabel(pd['ylabel'])
                 self.binAxes3.set_xlim(*pd['xlim'])
                 self.binAxes3.set_ylim(*pd['ylim'])
+
+                pd = self.plotdict['phaseint']
+                self.binAxes4.scatter(*pd['scatter'], c='darkred', marker='.', s=50)
+                self.binAxes4.plot(*pd['plot'], c='g', linestyle='-')
+                self.binAxes4.set_xlabel(pd['xlabel'])
+                self.binAxes4.set_ylabel(pd['ylabel'])
+                self.binAxes4.set_xlim(*pd['xlim'])
+                self.binAxes4.set_ylim(*pd['ylim'])
+                self.binAxes4.yaxis.labelpad = -1
 
             self.binCanvas.draw()
             self.setColorScheme(False)
