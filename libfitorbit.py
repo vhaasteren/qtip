@@ -292,18 +292,21 @@ def BT_delay(t, PB, T0, A1, OM, ECC=0.0, EDOT=0.0, PBDOT=0.0, XDOT=0.0, \
       return 0.0;
     """
 
-def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
+def BT_period_gregory(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
         EDOT=0.0, PBDOT=0.0, OMDOT=0.0):
     """
     The 'BT' binary model for the pulse period. Model:
     Blandford & Teukolsky (1976), ApJ, 205, 580-591
+
+    Adjusted from code by Gregory Desvignes
+    NOTE: incompatible with code below
 
     @param P0:          The pulse period [sec]
     @param P1:          The pulse period derivative [sec/sec]
     @param PEPOCH:      Position EPOCH
     @param PB:          Binary period [days]
     @param ECC:         Eccentricity
-    @param A1:          Semi-major axis (Projected?)
+    @param A1:          Projected semi-major axis (lt-sec)
     @param T0:          Time of ascending node (TASC)
     @param OM:          Omega (longitude of periastron) [deg]
     @param RA_RAD:      Pulsar position (right ascension) [rad]
@@ -334,7 +337,7 @@ def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
     return 1000*(P0+P1*(t-PEPOCH)*SECS_PER_DAY) * (1+kappa*np.cos(true_anom+omega) )
 
 
-def BN_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
+def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
         EDOT=0.0, PBDOT=0.0, OMDOT=0.0):
     """
     The 'BT' binary model for the pulse period. Model:
@@ -345,7 +348,7 @@ def BN_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
     @param PEPOCH:      Position EPOCH
     @param PB:          Binary period [days]
     @param ECC:         Eccentricity
-    @param A1:          Semi-major axis (Projected?)
+    @param A1:          Projected semi-major axis (lt-sec)
     @param T0:          Time of ascending node (TASC)
     @param OM:          Omega (longitude of periastron) [deg]
     @param RA_RAD:      Pulsar position (right ascension) [rad]
@@ -363,21 +366,23 @@ def BN_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
     if not np.all(np.logical_and(ecc >= 0.0, ecc <= 1.0)):
         return np.inf
 
-    # Obtain the true anomaly through the eccentric anomaly
+    # Calculate the orbital phase
     orbits = tt0 / pb - 0.5 * pbdot * (tt0 / pb) ** 2
     norbits = np.array(np.floor(orbits), dtype=np.long)
     phase = 2 * np.pi * (orbits - norbits)
-    #bige = eccentric_anomaly(ecc, phase)
-    #true_anom = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(bige/2))
 
-    # Amplitude of the doppler shift
-    amp = 2*np.pi*A1/(PB*SECS_PER_DAY*np.sqrt(1-ecc**2))
+    # Obtain the true anomaly through the eccentric anomaly
+    ea = eccentric_anomaly(ecc, phase)
+    ta = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(ea/2))
 
-    # Get the doppler amplitude
-    Pobs = 1000*(P0+P1*(t-PEPOCH)*SECS_PER_DAY) * (1 + amp*\
-            ((np.cos(phase)+ecc)*np.cos(omega)-np.sin(phase)*np.sin(omega)))
+    # Projected velocity of the pulsar in the direction of the line-of-sight
+    # (Divided by speed of light due to units of A1)
+    vl = 2*np.pi*A1/(PB*SECS_PER_DAY*np.sqrt(1-ecc**2))
 
-    return Pobs
+    # Pulse period, adjusted for frequency evolution
+    Px = 1000 * (P0 + P1*(t-PEPOCH)*SECS_PER_DAY)
+
+    return Px * (1 + vl * ((np.cos(ta)+ecc)*np.cos(omega)-np.sin(ta)*np.sin(omega)))
 
 
 
@@ -798,8 +803,8 @@ class orbitpulsar(object):
 
         if model == 'BT':
             pmodel = BT_period(mj, *bmarr)
-        elif model == 'BN':
-            pmodel = BN_period(mj, *bmarr)
+        elif model == 'BTG':
+            pmodel = BT_period_gregory(mj, *bmarr)
         elif model  == 'DD':
             raise NotImplemented("Only BT works for now")
 
