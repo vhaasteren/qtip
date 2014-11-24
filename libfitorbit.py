@@ -340,8 +340,10 @@ def BT_period_gregory(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
 def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
         EDOT=0.0, PBDOT=0.0, OMDOT=0.0):
     """
-    The 'BT' binary model for the pulse period. Model:
-    Blandford & Teukolsky (1976), ApJ, 205, 580-591
+    The 'BT' binary model for the pulse period. Model as in:
+    W.M. Smart, (1962), "Spherical Astronomy", p359
+
+    See also: Blandford & Teukolsky (1976), ApJ, 205, 580-591
 
     @param P0:          The pulse period [sec]
     @param P1:          The pulse period derivative [sec/sec]
