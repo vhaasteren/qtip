@@ -190,7 +190,7 @@ class BasePulsar(object):
 
         # The possible binary pulsar parameters
         self.binarypars = ['T0', 'T0_1', 'PB', 'PBDOT', 'PB_1', 'ECC', 'ECC_1', 'OM',
-            'OM_1', 'A1', 'A1_1', 'OM', 'OM_1', 'E2DOT', 'EDOT', 'KOM', 'KIN',
+            'OM_1', 'A1', 'A1_1', 'OM', 'E2DOT', 'EDOT', 'KOM', 'KIN',
             'SHAPMAX', 'M2', 'MTOT', 'DR', 'DTH', 'A0', 'B0', 'BP', 'BPP', 'DTHETA',
             'SINI', 'H3', 'STIG', 'H4', 'NHARM', 'GAMMA', 'PBDOT', 'XPBDOT', 'XDOT',
             'X2DOT', 'XOMDOT', 'AFAC', 'OMDOT', 'OM2DOT', 'ORBPX', 'TASC', 'EPS1',

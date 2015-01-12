@@ -17,7 +17,7 @@ if sys.argv[-1] == "publish":
 
 setup(
     name="qtip",
-    version='2014.11',
+    version='2015.01',
     author="Rutger van Haasteren",
     author_email="vhaasteren@gmail.com",
     packages=["qtip"],

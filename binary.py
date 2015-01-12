@@ -35,7 +35,7 @@ import tempfile
 from libfitorbit import orbitpulsar
 
 import math 
-from scipy.optimize import leastsq
+import scipy.optimize as so
 
 # Regular expressions for RA and DEC fields
 RAREGEXP = "^(([01]?[0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?)$"
@@ -459,7 +459,7 @@ class BinaryWidget(QtGui.QWidget):
         # If there are parameters to fit, do a least-squares minimization
         if np.sum(fitmsk) > 0:
             # Perform the least-squares fit
-            plsq = leastsq(resids, np.float64(fpars), args=(self.bpsr, apars, fitmsk))
+            plsq = so.leastsq(resids, np.float64(fpars), args=(self.bpsr, apars, fitmsk))
 
             # Place the new paramerers back in the boxes
             apars[fitmsk] = plsq[0]
