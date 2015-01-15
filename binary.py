@@ -302,7 +302,7 @@ class BinaryWidget(QtGui.QWidget):
             tparfilename = parfilename
 
         self.bpsr.readParFile(tparfilename)
-        self.bpsr.readPerFile(tperfilename)
+        self.bpsr.readPerFile(tperfilename, ms=True)
 
         if perfilename is None or parfilename is None:
             os.remove(tperfilename)

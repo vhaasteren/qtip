@@ -629,6 +629,7 @@ def findCandidates(par, stat, func, args=(), comp='log10', threshold=0.2):
 
     # All neighboring candidates should be counted as one. Group them
     bucket_inds = [[inds[0]]]
+
     for ii in inds[1:]:
         if ii == bucket_inds[-1][-1]+1:
             bucket_inds[-1].append(ii)
@@ -774,7 +775,7 @@ class orbitpulsar(object):
                 self.periodserrs = None
 
             if ms:
-                self.periods *= 1000.0
+                self.periods *= 0.001
         else:
             self.perfilename = None
 
@@ -1035,12 +1036,13 @@ class orbitpulsar(object):
         nobs = len(mjds)
         self.periodserrs = np.ones(nobs) * perr
         self.mjds = np.array(mjds)
-        self.periods = self.orbitModel(mjds = self.mjds, model=model)
+        self.periods = self.orbitModel(mjds = self.mjds, model=model) + \
+                np.random.randn(nobs) * self.periodserrs
 
-    def roughness_fast(self, pb):
+    def roughness_noerr(self, pb):
         """
         Calculate the roughness, given an array of binary periods (vectorized
-        version)
+        version). Unmodified version
 
         Using the Roughness as defined in:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
@@ -1060,32 +1062,14 @@ class orbitpulsar(object):
 
         return R
 
-    def roughness_slow(self, pb):
-        """
-        Calculate the roughness, given an array of binary periods
-
-        Using the Roughness as defined in:
-        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
-        """
-        n = len(pb)
-        R = np.zeros(n)
-
-        for ii, per in enumerate(pb):
-            phi = np.fmod(np.float64(self['T0'].val), per)
-            phase = np.fmod(self.mjds-phi, per) / per
-            inds = np.argsort(phase)
-
-            R[ii] = np.sum((self.periods[inds][:-1] - self.periods[inds][1:])**2)
-
-        return R
-
-    def roughness_new(self, pb, scale=0.3):
+    def roughness_new(self, periods, pb, scale=0.3):
         """
         Calculate the roughness, given an array of binary periods
 
         Using a modified version of the Roughness as defined in:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
 
+        @param periods: The re-scaled (for P1) observed period data
         @param pb:      Array with binary periods to try
         @param scale:   Scale up to which we are sensitive to changes
 
@@ -1096,7 +1080,7 @@ class orbitpulsar(object):
         phi = np.fmod(np.float64(self['T0'].val), per)
         mjds = mjds-phi
 
-        periods = self.periods.reshape(len(self.periods), 1).repeat(n, axis=1).T
+        periods = periods.reshape(len(self.periods), 1).repeat(n, axis=1).T
         phase = np.fmod(mjds, per) / per
 
         if self.periodserrs is not None:
@@ -1116,11 +1100,20 @@ class orbitpulsar(object):
         return R
 
 
-    def roughness(self, pb):
+    def roughness(self, pb, P1=None, PEPOCH=None, scale=0.3):
         """
         Calculate the roughness for binary period pb (array)
         """
-        return self.roughness_new(pb)
+        if P1 is not None and PEPOCH is not None:
+            # Include P1 rescaling
+            R = np.zeros((len(pb), len(P1)))
+            for ii, pds in enumerate(P1):
+                periods = self.periods - (self.mjds-PEPOCH) * pds * SECS_PER_DAY
+
+                R[:, ii] = self.roughness_new(periods, pb, scale=scale)
+        else:
+            R = self.roughness_new(self.periods, pb, scale=scale)
+        return R
 
     def roughnessPlot(self, pbmin=0.007, pbmax=None, frac=0.01):
         """
@@ -1144,6 +1137,27 @@ class orbitpulsar(object):
 
         return pb, rg
 
+    def roughnessPlot2D(self, pbmin=0.007, pbmax=None, fracPb=0.01, \
+            fracP1=0.10, P1max=5.0e-12, PEPOCH=None):
+        Tmax = np.max(self.mjds) - np.min(self.mjds)
+        Pmax = np.max(self.periods) - np.min(self.periods)
+        if pbmax is None:
+            pbmax = Tmax
+        if PEPOCH is None:
+            PEPOCH = 0.5*(np.max(self.mjds)+np.max(self.mjds))
+
+        N_pb = int( ((pbmax-pbmin)*Tmax*2*np.pi/fracPb)**(1.0/3.0)/pbmin )
+        ind = np.arange(N_pb)
+        dpb = fracPb * pbmin**3/(2*np.pi*Tmax)
+        pb = pbmin + dpb * ind**3
+
+        dp = fracP1 * Pmax / (Tmax * SECS_PER_DAY)
+        p1 = np.arange(0.0, P1max, dp)
+
+        r = self.roughness(pb, p1, PEPOCH=PEPOCH)
+
+        return pb, p1, r
+
     def PbEst(self, pbmin=0.007, pbmax=None, frac=0.01):
         """
         Return an estimate of the binary period using the roughness
@@ -1155,7 +1169,7 @@ class orbitpulsar(object):
         return pb[np.argmin(rg)]
 
 
-    def PbCandidates(self, pbmin=0.007, pbmax=None, frac=0.01, threshold=0.2):
+    def PbCandidates(self, pbmin=0.007, pbmax=None, frac=0.01, threshold=0.25):
         """
         Return the candidate binary periods, based on the roughness.
 
@@ -1175,6 +1189,30 @@ class orbitpulsar(object):
         return np.array(findCandidates(pb, rg, funcPb, args=(self,), \
                 comp='log10', threshold=threshold))
 
+    def PbP1Candidates(self, PEPOCH, pbmin=0.007, pbmax=None, fracPb=0.01, \
+            fracP1=0.10, P1max=5.0e-12, threshold=0.25, scale=0.3):
+        pb, p1, rg = self.roughnessPlot2D(pbmin=pbmin, pbmax=pbmax, \
+                fracPb=fracPb, fracP1=fracP1, P1max=P1max, PEPOCH=PEPOCH)
+
+        def funcPb(pb, P1, PEPOCH, psr, scale=0.3):
+            return psr.roughness(np.array([pb]), P1=np.array([P1]), PEPOCH=PEPOCH, \
+                    scale=scale)[0,0]
+
+        mv = np.log10(np.min(rg))
+        msk = np.log10(rg) < mv+threshold
+        inds = np.array(np.unravel_index(np.flatnonzero(msk), rg.shape)).T
+
+        P1list = np.unique(inds[:,1])
+        P1cands = []
+        cands = []
+        for ii, P1i in enumerate(P1list):
+            cl = findCandidates(pb, rg[:,P1i], funcPb, \
+                    args=(p1[P1i], PEPOCH, self, scale), \
+                    comp='log10', threshold=threshold)
+            cands.append(np.array(cl))
+            P1cands.append(p1[P1i])
+        return cands, P1cands
+
     def Peo(self, Pb=None, T0=None, kind='linear'):
         """
         Return the Peven and Podd functions, as defined in:
@@ -1189,8 +1227,8 @@ class orbitpulsar(object):
 
         @return:    Peven, Podd
         """
-        if len(self.periods) < 10:
-            raise ValueError("Need more than 10 observations")
+        if len(self.periods) < 8:
+            raise ValueError("Need more than 8 observations")
 
         if Pb is None:
             Pb = self.PbEst()
@@ -1201,6 +1239,9 @@ class orbitpulsar(object):
         phi = np.fmod(T0, Pb)
         phase = np.fmod(self.mjds-phi, Pb) / Pb
         ind = np.argsort(phase)
+
+        if np.any(phase < 0.0):
+            raise ValueError("Some MJD values smaller than orbital period.")
 
         phase = phase[ind]
         periods = self.periods[ind]
@@ -1425,39 +1466,40 @@ class orbitpulsar(object):
         for ii, Pbe in enumerate(PbC):
             # Scan over the T0 values
             PbX, T0s, OMs, P0s, RAMPs, xi2 = self.BNscan(Pbe, T0C)
-            
-            # Find local minima, and produce candidates of T0
-            T0CC = findCandidates(T0C, xi2, BNfunc, args=(Pbe, self), comp='log10', threshold=0.1)
 
-            # For every PB/T0 candidate, obtain the parameter fits, and add to the lists
-            for T0_cand in T0CC:
-                Peven, Podd = self.Peo(Pb=Pbe, T0=T0_cand)
-                OMc, P0, RAMP, xi2 = self.oe_ABC_leastsq(Peven, Podd)
+            if not np.all(xi2 == np.inf):
+                # Find local minima, and produce candidates of T0
+                T0CC = findCandidates(T0C, xi2, BNfunc, args=(Pbe, self), comp='log10', threshold=0.1)
 
-                if RAMP < 0.0:
-                    RAMP = -RAMP
-                    OMc += 180.0
+                # For every PB/T0 candidate, obtain the parameter fits, and add to the lists
+                for T0_cand in T0CC:
+                    Peven, Podd = self.Peo(Pb=Pbe, T0=T0_cand)
+                    OMc, P0, RAMP, xi2 = self.oe_ABC_leastsq(Peven, Podd)
 
-                # Convert/mirror OM to all quadrants
-                OMs = [np.fmod(720.0+OMc, 360.0), np.fmod(900-OMc, 360.0), np.fmod(720-OMc, 360.0), np.fmod(900+OMc, 360.0)]
-                
-                for OM in OMs:
-                    # Now find the eccentricity for each candidate
-                    eccp = np.linspace(0.0, 1.0, 100, endpoint=False)
-                    args = (P0, RAMP, OM, T0_cand, Pbe, self)
-                    nll = np.array([nloglik(ecc, *args) for ecc in eccp])
+                    if RAMP < 0.0:
+                        RAMP = -RAMP
+                        OMc += 180.0
 
-                    # Make a list with eccentricity candidates
-                    ecc_cand = findCandidates(eccp, nll, nloglik, args=args, comp='flat', threshold=0.5)
+                    # Convert/mirror OM to all quadrants
+                    OMs = [np.fmod(720.0+OMc, 360.0), np.fmod(900-OMc, 360.0), np.fmod(720-OMc, 360.0), np.fmod(900+OMc, 360.0)]
+                    
+                    for OM in OMs:
+                        # Now find the eccentricity for each candidate
+                        eccp = np.linspace(0.0, 1.0, 100, endpoint=False)
+                        args = (P0, RAMP, OM, T0_cand, Pbe, self)
+                        nll = np.array([nloglik(ecc, *args) for ecc in eccp])
 
-                    # Add all the candidates to the lists
-                    for ecc in ecc_cand:
-                        Pb_l.append(Pbe)
-                        T0_l.append(T0_cand)
-                        OM_l.append(OM)
-                        P0_l.append(P0)
-                        RAMP_l.append(RAMP)
-                        ECC_l.append(ecc)
+                        # Make a list with eccentricity candidates
+                        ecc_cand = findCandidates(eccp, nll, nloglik, args=args, comp='flat', threshold=0.5)
+
+                        # Add all the candidates to the lists
+                        for ecc in ecc_cand:
+                            Pb_l.append(Pbe)
+                            T0_l.append(T0_cand)
+                            OM_l.append(OM)
+                            P0_l.append(P0)
+                            RAMP_l.append(RAMP)
+                            ECC_l.append(ecc)
                 
         return np.array([P0_l, RAMP_l, OM_l, T0_l, ECC_l, Pb_l]).T
 
@@ -1477,8 +1519,13 @@ class orbitpulsar(object):
         for ii, sol in enumerate(sols):
             pcov = pcovs[ii]
             if pcov is not None:
-                cf = sl.cho_factor(pcov)
-                xi2 = np.dot(cand-sol, sl.cho_solve(cf, cand-sol))
+                try:
+                    cf = sl.cho_factor(pcov)
+                    xi2 = np.dot(cand-sol, sl.cho_solve(cf, cand-sol))
+                except:
+                    U, s, Vt = sl.svd(pcov)
+                    xi2 = np.dot(cand-sol, np.dot(Vt.T / s, np.dot(U.T,
+                            cand-sol)))
                 if xi2 <= 9.236:
                     # At 90% confidence with 5-dof xi2 test, same solution
                     haveC = True
@@ -1486,7 +1533,7 @@ class orbitpulsar(object):
         return haveC
 
 
-    def reduceCandidates(self, cands, ll_threshold=3.0):
+    def reduceCandidates(self, cands, ll_threshold=3.0, model='RED'):
         """
         Given a list of parameter candidates, as produced with BNcandidates,
         optimize and reduce the candidates to unique proposals.
@@ -1498,8 +1545,8 @@ class orbitpulsar(object):
         """
         ll = []
         for cand in cands:
-            pd = array_to_pardict(cand, which='RED')
-            ll.append(self.loglikelihood(pardict=pd, model='RED'))
+            pd = array_to_pardict(cand, which=model)
+            ll.append(self.loglikelihood(pardict=pd, model=model))
 
         # Which ll-candidates to consider (3.0 is a pretty broad inclusion rate)
         ll = np.array(ll) - np.max(ll)
@@ -1507,8 +1554,8 @@ class orbitpulsar(object):
 
         # Residuals (for leastsq function)
         def resids(pars, psr):
-            pd = array_to_pardict(pars, which='RED')
-            return psr.orbitResiduals(pardict=pd, weight=True, model='RED')
+            pd = array_to_pardict(pars, which=model)
+            return psr.orbitResiduals(pardict=pd, weight=True, model=model)
 
         # For all selected candidates, perform an optimization
         sols = []
