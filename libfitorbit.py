@@ -1426,9 +1426,12 @@ class orbitpulsar(object):
 
     def BNcandidates(self, PbC=None, threshold=0.25, N_T0=250, N_ECC=100):
         """
-        Estimate candidates for the parameters: Pb, T0, OM, P0, amplitude (A1)
-        Adapted from:
-        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
+        Estimate the parameters of the Smart model
+        W.M. Smart, (1962), "Spherical Astronomy", p359
+        which is the same as the BT model:
+        Blandford & Teukolsky (1976), ApJ, 205, 580-591
+
+        This version does not take into account P1
 
         @param PbC:         Orbital period candidates (set here if None)
         @param T0:          Trial values of T0 (set here if None)
@@ -1436,13 +1439,18 @@ class orbitpulsar(object):
         @param N_T0:        How many trial values for T0 to try
         @param N_ECC:       How many trial values for ECC to try
 
-        @return: 2D array, with rows [P0, RAMP, OM, T0, ECC, PB]
+        @return: 2D array, with rows [P0, P1, PEPOCH, PB, ECC, A1, T0, OM, \
+                                      RA, DEC]
         """
+        PEPOCH = 0.5*(np.min(self.mjds)+np.max(self.mjds))
+
         if PbC is None:
             PbC = self.PbCandidates(threshold=threshold)
         
         # Lists of all the parameter candidates
-        Pb_l, T0_l, OM_l, P0_l, RAMP_l, ECC_l = [], [], [], [], [], []
+        #Pb_l, T0_l, OM_l, P0_l, RAMP_l, ECC_l = [], [], [], [], [], []
+        Pb_l, T0_l, OM_l, P0_l, A1_l, ECC_l, P1_l, PEPOCH_l, RAJ_l, DECJ_l = \
+                [], [], [], [], [], [], [], [], [], []
 
         # Ellipse-fit xi^2 function to minimize wrt T0
         def BNfunc(T0, Pb, psr):
@@ -1495,14 +1503,22 @@ class orbitpulsar(object):
 
                         # Add all the candidates to the lists
                         for ecc in ecc_cand:
+                            # Convert to the BT model:
+                            P0bt, A1bt = A1P0fromRED(P0, RAMP, ecc, OM, Pbe)
+
                             Pb_l.append(Pbe)
                             T0_l.append(T0_cand)
                             OM_l.append(OM)
-                            P0_l.append(P0)
-                            RAMP_l.append(RAMP)
+                            P0_l.append(P0bt)
+                            A1_l.append(A1bt)
                             ECC_l.append(ecc)
+                            P1_l.append(0.0)
+                            PEPOCH_l.append(PEPOCH)
+                            RAJ_l.append(self['RA'].val)
+                            DECJ_l.append(self['DEC'].val)
                 
-        return np.array([P0_l, RAMP_l, OM_l, T0_l, ECC_l, Pb_l]).T
+        return np.array([P0_l, P1_l, PEPOCH_l, Pb_l, ECC_l, A1_l, T0_l, OM_l, \
+                        RAJ_l, DECJ_l]).T
 
     def BTcandidates(self, pbmin=0.007, pbmax=None, fracPb=0.01, \
             fracP1=0.10, P1max=5.0e-12, threshold=0.25, scale=0.3, \
@@ -1512,6 +1528,8 @@ class orbitpulsar(object):
         W.M. Smart, (1962), "Spherical Astronomy", p359
         which is the same as the BT model:
         Blandford & Teukolsky (1976), ApJ, 205, 580-591
+
+        This version can also estimate P1
 
         @param pbmin:       Minimum binary period
         @param pbmax:       Maximum binary period (None -> 1/Tmax)
@@ -1524,7 +1542,9 @@ class orbitpulsar(object):
         @param N_T0:        How many trial values for T0 to try
         @param N_ECC:       How many trial values for ECC to try
 
-        @return: 2D array, with rows [P0, RAMP, OM, T0, ECC, PB, P1, PEPOCH]
+        @return: 2D array, with rows [P0, P1, PEPOCH, PB, ECC, A1, T0, OM, \
+                                      RA, DEC]
+
         """
         PEPOCH = 0.5*(np.min(self.mjds)+np.max(self.mjds))
         
@@ -1647,7 +1667,7 @@ class orbitpulsar(object):
         return haveC
 
 
-    def reduceCandidates(self, cands, ll_threshold=3.0, model='RED'):
+    def reduceCandidates(self, cands, ll_threshold=3.0, model='BT'):
         """
         Given a list of parameter candidates, as produced with BNcandidates,
         optimize and reduce the candidates to unique proposals.
