@@ -562,7 +562,6 @@ class BinaryWidget(QtGui.QWidget):
                     self.bpsr.Peo_interp(np.float64(self.bpsr['PB'].val), \
                     T0=np.float64(self.bpsr['T0'].val), kind='linear')
         else:
-            #PBest, T0est, OMest, ECC, xi2 = self.bpsr.BNest()
             pass
         pdeo['plotcur'] = Pe, Po
         pdeo['plotint'] = Pei, Poi

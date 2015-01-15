@@ -175,6 +175,23 @@ def array_to_pardict(parameters, which='BT'):
 
     return pardict
 
+def A1P0fromRED(P0r, RAMP, ECC, OM, PB):
+    """
+    Given the reduced model parameters P0r, RAMP, ECC, and OM, calculate the
+    re-scaled P0 and A1
+
+    @param P0r:     The P0 as measured in the reduced parameterization [s]
+    @param RAMP:    The reduced model oscillation amplitude [s]
+    @param ECC:     The eccentricity
+    @param OM:      The longitude of periastron advance (deg)
+    @param PB:      The binary period
+
+    @return:        P0, A1
+    """
+    P0 = P0r - RAMP*ECC*np.cos(DEG2RAD*OM)
+    A1 = RAMP * PB * np.sqrt(1-ECC**2) * SECS_PER_DAY / (2*np.pi*P0)
+    return P0, A1
+
 def RED2BT(redpars, btpars):
     """
     Convert the reduced model parameters to the BT model parameters
@@ -187,8 +204,7 @@ def RED2BT(redpars, btpars):
     PB = redpars[5]
 
     # Do some conversion adjustments
-    P0 = P0r - RAMP*ECC*np.cos(DEG2RAD*OM)
-    A1 = RAMP * PB * np.sqrt(1-ECC**2) * SECS_PER_DAY / (2*np.pi*P0)
+    P0, A1 = A1P0fromRED(P0r, RAMP, ECC, OM, PB)
 
     btpars[0] = P0
     btpars[1] = 0.0
@@ -969,7 +985,7 @@ class orbitpulsar(object):
         return pmodel
 
     def orbitResiduals(self, pardict=None, parameters=None, which='set', \
-            parlist=None, weight=False, model=None):
+            parlist=None, weight=False, model=None, periods=None):
         """
         Return the residuals = data - model for the pulse period, given the
         current binary model and parameters
@@ -983,6 +999,9 @@ class orbitpulsar(object):
         @param parlist:     (Overrides which) which parameters are in the array
         @param weight:      If True, weight the residuals by their uncertainties
         @param model:       Which period model to use (Default self.binaryModel)
+        @param periods:     If not None, use this instead of self.periods
+
+        @return:            Residuals
         """
         if parameters is not None:
             mask = self.parmask(which=which, pars=parlist)
@@ -994,7 +1013,10 @@ class orbitpulsar(object):
         else:
             pardict = self.pardict
 
-        resids = self.periods - self.orbitModel(pardict=pardict, model=model)
+        if periods is None:
+            periods = self.periods.copy()
+
+        resids = periods - self.orbitModel(pardict=pardict, model=model)
 
         if weight and self.periodserrs is not None:
             resids /= self.periodserrs
@@ -1002,7 +1024,7 @@ class orbitpulsar(object):
         return resids
 
     def loglikelihood(self, pardict=None, parameters=None, which='set',
-            parlist=None, model=None):
+            parlist=None, model=None, periods=None):
         """
         Return the log-likelihood for the data, given the model
 
@@ -1014,6 +1036,8 @@ class orbitpulsar(object):
                             parameters are actually in the array
         @param parlist:     (Overrides which) which parameters are in the array
         @param model:       Which period model to use (Default self.binaryModel)
+        @param periods:     If not None, use this instead of self.periods
+
         @return:    The log-likelihood value
         """
         if self.periodserrs is None:
@@ -1022,7 +1046,7 @@ class orbitpulsar(object):
         n = len(self.periods)
         xi2 = np.sum(self.orbitResiduals(pardict=pardict, \
                 parameters=parameters, which=which, parlist=parlist, \
-                weight=True, model=model)**2)
+                weight=True, model=model, periods=periods)**2)
         return -0.5*xi2 - np.sum(np.log(self.periodserrs)) - 0.5*n*np.log(2*np.pi)
 
     def simData(self, mjds, perr=1.2e-7, model=None):
@@ -1191,6 +1215,20 @@ class orbitpulsar(object):
 
     def PbP1Candidates(self, PEPOCH, pbmin=0.007, pbmax=None, fracPb=0.01, \
             fracP1=0.10, P1max=5.0e-12, threshold=0.25, scale=0.3):
+        """
+        For the current pulsar, given a value for PEPOCH, estimate candidates
+        for P1 and PB.
+
+        @param PEPOCH:      Position EPOCH
+        @param pbmin:       Minimum binary period
+        @param pbmax:       Maximum binary period (None -> 1/Tmax)
+        @param fracPb:      1/Oversampling of binary period
+        @param fracP1:      1/Oversampling pulse period derivative
+        @param P1max:       Maximum pulse period derivative value
+        @param threshold:   Roughness threshold value for including binary
+                            period candidates
+        @param scale:       How far in phase should orbit still be correlated
+        """
         pb, p1, rg = self.roughnessPlot2D(pbmin=pbmin, pbmax=pbmax, \
                 fracPb=fracPb, fracP1=fracP1, P1max=P1max, PEPOCH=PEPOCH)
 
@@ -1213,22 +1251,28 @@ class orbitpulsar(object):
             P1cands.append(p1[P1i])
         return cands, P1cands
 
-    def Peo(self, Pb=None, T0=None, kind='linear'):
+    def Peo(self, Pb=None, T0=None, P1=None, PEPOCH=None, kind='linear'):
         """
         Return the Peven and Podd functions, as defined in:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
         For the interpolation, use a method indicated by kind
         
-        @param Pb:  Estimate of the binary period. If not set, use an estimate
-                    obtained through the roughness
-        @param T0:  Estimate of periastron passage. If not set, use the current
-                    value
-        #param:     What kind of interpolation to use ('cubic', 'linear', etc.)
+        @param Pb:      Estimate of the binary period. If not set, use an
+                        estimate obtained through the roughness
+        @param T0:      Estimate of periastron passage. If not set, use the
+                        current value
+        @param P1:      If both PEPOCH and P1 set: the pulse period derivative
+        @param PEPOCH:  If both PEPOCH and P1 set: the epoch
+        @param kind:    What kind of interpolation to use (eg. cubic, linear)
 
         @return:    Peven, Podd
         """
         if len(self.periods) < 8:
             raise ValueError("Need more than 8 observations")
+        elif P1 is not None and PEPOCH is not None:
+            periods = self.periods - (self.mjds-PEPOCH) * P1 * SECS_PER_DAY
+        else:
+            periods = self.periods.copy()
 
         if Pb is None:
             Pb = self.PbEst()
@@ -1244,7 +1288,7 @@ class orbitpulsar(object):
             raise ValueError("Some MJD values smaller than orbital period.")
 
         phase = phase[ind]
-        periods = self.periods[ind]
+        periods = periods[ind]
 
         # In order to get correct estimates, we wrap around the phase with three
         # extra points each way
@@ -1258,7 +1302,7 @@ class orbitpulsar(object):
 
         return Peven, Podd
 
-    def Peo_interp(self, Pb=None, T0=None, kind='linear'):
+    def Peo_interp(self, Pb=None, T0=None, P1=None, PEPOCH=None, kind='linear'):
         """
         Return the interpolated Peven and Podd for the full phase coverage
         (for debugging purposes)
@@ -1267,12 +1311,18 @@ class orbitpulsar(object):
                     obtained through the roughness
         @param T0:  Estimate of periastron passage. If not set, use the current
                     value
-        #param:     What kind of interpolation to use ('cubic', 'linear', etc.)
+        @param P1:      If both PEPOCH and P1 set: the pulse period derivative
+        @param PEPOCH:  If both PEPOCH and P1 set: the epoch
+        @param kind:    What kind of interpolation to use (eg. cubic, linear)
 
         @return:    Peven, Podd
         """
-        if len(self.periods) < 10:
-            raise ValueError("Need more than 10 observations")
+        if len(self.periods) < 8:
+            raise ValueError("Need more than 8 observations")
+        elif P1 is not None and PEPOCH is not None:
+            periods = self.periods - (self.mjds-PEPOCH) * P1 * SECS_PER_DAY
+        else:
+            periods = self.periods.copy()
 
         if Pb is None:
             Pb = self.PbEst()
@@ -1285,7 +1335,7 @@ class orbitpulsar(object):
         ind = np.argsort(phase)
 
         phase = phase[ind]
-        periods = self.periods[ind]
+        periods = periods[ind]
 
         # In order to get correct estimates, we wrap around the phase with three
         # extra points each way
@@ -1339,89 +1389,42 @@ class orbitpulsar(object):
 
         return OM, P0, RAMP, xi2
 
-    def BNscan(self, Pb=None, T0=None):
+    def BNscan(self, Pb=None, T0=None, P1=None, PEPOCH=None, N_T0=250):
         """
         Use the Bhattacharyya & Nityanada method to estimate: Pb, T0, OM, RAMP.
         Adapted from:
         Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
 
-        @param Pb:  Estimated value for binary period
-        @param T0:  Trial values of T0 (set here if None)
+        @param Pb:      Estimated value for binary period
+        @param T0:      Trial values of T0 (set here if None)
+        @param P1:      If both PEPOCH and P1 set: the pulse period derivative
+        @param PEPOCH:  If both PEPOCH and P1 set: the epoch
 
         @return: Pb (scalar), T0, OM, RAMP, P0, xi2
         """
         if Pb is None:
+            if P1 is not None or PEPOCH is not None:
+                raise NotImplemented("For nonzero P1, cannot estimate Pb here")
             Pb = self.PbEst()
 
         if T0 is None:
-            N = 1000
             T0 = np.linspace(\
                     np.float64(self['T0'].val)-0.25*Pb, \
-                    np.float64(self['T0'].val)+0.25*Pb, N)
+                    np.float64(self['T0'].val)+0.25*Pb, N_T0)
         else:
-            N = len(T0)
+            N_T0 = len(T0)
 
-        xi2 = np.zeros(N)
-        OM = np.zeros(N)
-        RAMP = np.zeros(N)
-        P0 = np.zeros(N)
+        xi2 = np.zeros(N_T0)
+        OM = np.zeros(N_T0)
+        RAMP = np.zeros(N_T0)
+        P0 = np.zeros(N_T0)
         for ii, t in enumerate(T0):
-            Peven, Podd = self.Peo(Pb=Pb, T0=t)
+            Peven, Podd = self.Peo(Pb=Pb, T0=t, P1=P1, PEPOCH=PEPOCH)
             OM[ii], P0[ii], RAMP[ii], xi2[ii] = self.oe_ABC_leastsq(Peven, Podd)
 
         return Pb, T0, OM, P0, RAMP, xi2
 
-    def BNest(self, T0=None):
-        """
-        Use the Bhattacharyya & Nityanada method to estimate: Pb, T0, OM, P0.
-        amplitude
-        Adapted from:
-        Bhattacharyya & Nityanada, 2008, MNRAS, 387, Issue 1, pp. 273-278
-
-        @param T0:  Trial values of T0 (set here if None)
-
-        @return: Pb, T0, OM, P0, RAMP
-        """
-
-        def BNfunc(T0, Pb, psr):
-            """
-            Calculate the xi2 for the Peven/Podd fit for specific T0/Pb combo
-            """
-            Peven, Podd = psr.Peo(Pb=Pb, T0=T0)
-            OM, P0, RAMP, xi2 = psr.oe_ABC_leastsq(Peven, Podd)
-            return xi2
-
-
-        Pb = self.PbEst()
-
-        if T0 is None:
-            N = 1000
-            T0 = np.linspace(\
-                    np.float64(self['T0'].val)-0.25*Pb, \
-                    np.float64(self['T0'].val)+0.25*Pb, N)
-        else:
-            N = len(T0)
-
-        Pb, T0, OM, P0, RAMP, xi2 = self.BNscan(Pb, T0)
-
-        ind = np.argmin(xi2)
-
-        minind = max(0, ind-1)
-        maxind = min(len(xi2), ind+1)
-
-        # Do a SciPy optimization procedure
-        bracket = (T0[minind], T0[maxind])
-        res = so.minimize_scalar(BNfunc, \
-                bracket=bracket, \
-                args=(Pb, self), method='brent')
-
-        T0 = res.x
-        Peven, Podd = self.Peo(Pb=Pb, T0=T0)
-        OM, P0, RAMP, xi2 = self.oe_ABC_leastsq(Peven, Podd)
-
-        return Pb, T0, OM, P0, RAMP
-
-    def BNcandidates(self, PbC=None, T0C=None, threshold=0.25):
+    def BNcandidates(self, PbC=None, threshold=0.25, N_T0=250, N_ECC=100):
         """
         Estimate candidates for the parameters: Pb, T0, OM, P0, amplitude (A1)
         Adapted from:
@@ -1430,20 +1433,13 @@ class orbitpulsar(object):
         @param PbC:         Orbital period candidates (set here if None)
         @param T0:          Trial values of T0 (set here if None)
         @param threshold:   Log10-threshold for candidate inclusion
+        @param N_T0:        How many trial values for T0 to try
+        @param N_ECC:       How many trial values for ECC to try
 
         @return: 2D array, with rows [P0, RAMP, OM, T0, ECC, PB]
         """
         if PbC is None:
             PbC = self.PbCandidates(threshold=threshold)
-        
-        # Scan/search over these time of ascending node passages
-        if T0C is None:
-            N = 250
-            T0C = np.linspace(\
-                    np.float64(self['T0'].val)-0.25*PbC[0], \
-                    np.float64(self['T0'].val)+0.25*PbC[0], N)
-        else:
-            N = len(T0C)
         
         # Lists of all the parameter candidates
         Pb_l, T0_l, OM_l, P0_l, RAMP_l, ECC_l = [], [], [], [], [], []
@@ -1464,6 +1460,11 @@ class orbitpulsar(object):
         
         # For every orbital period candidate, find T0 candidates
         for ii, Pbe in enumerate(PbC):
+            # Scan/search over these time of ascending node passages
+            T0C = np.linspace(\
+                    np.float64(self['T0'].val)-0.25*Pbe, \
+                    np.float64(self['T0'].val)+0.25*Pbe, N_T0)
+
             # Scan over the T0 values
             PbX, T0s, OMs, P0s, RAMPs, xi2 = self.BNscan(Pbe, T0C)
 
@@ -1485,7 +1486,7 @@ class orbitpulsar(object):
                     
                     for OM in OMs:
                         # Now find the eccentricity for each candidate
-                        eccp = np.linspace(0.0, 1.0, 100, endpoint=False)
+                        eccp = np.linspace(0.0, 1.0, N_ECC, endpoint=False)
                         args = (P0, RAMP, OM, T0_cand, Pbe, self)
                         nll = np.array([nloglik(ecc, *args) for ecc in eccp])
 
@@ -1502,6 +1503,119 @@ class orbitpulsar(object):
                             ECC_l.append(ecc)
                 
         return np.array([P0_l, RAMP_l, OM_l, T0_l, ECC_l, Pb_l]).T
+
+    def BTcandidates(self, pbmin=0.007, pbmax=None, fracPb=0.01, \
+            fracP1=0.10, P1max=5.0e-12, threshold=0.25, scale=0.3, \
+            N_T0=250, N_ECC=100):
+        """
+        Estimate the parameters of the Smart model
+        W.M. Smart, (1962), "Spherical Astronomy", p359
+        which is the same as the BT model:
+        Blandford & Teukolsky (1976), ApJ, 205, 580-591
+
+        @param pbmin:       Minimum binary period
+        @param pbmax:       Maximum binary period (None -> 1/Tmax)
+        @param fracPb:      1/Oversampling of binary period
+        @param fracP1:      1/Oversampling pulse period derivative
+        @param P1max:       Maximum pulse period derivative value
+        @param threshold:   Roughness threshold value for including binary
+                            period candidates
+        @param scale:       How far in phase should orbit still be correlated
+        @param N_T0:        How many trial values for T0 to try
+        @param N_ECC:       How many trial values for ECC to try
+
+        @return: 2D array, with rows [P0, RAMP, OM, T0, ECC, PB, P1, PEPOCH]
+        """
+        PEPOCH = 0.5*(np.min(self.mjds)+np.max(self.mjds))
+        
+        # Lists of all the parameter candidates
+        Pb_l, T0_l, OM_l, P0_l, A1_l, ECC_l, P1_l, PEPOCH_l, RAJ_l, DECJ_l = \
+                [], [], [], [], [], [], [], [], [], []
+
+        PBcands, P1cands = self.PbP1Candidates(PEPOCH, pbmin=pbmin, \
+                pbmax=pbmax, fracPb=fracPb, fracP1=fracP1, P1max=P1max, \
+                threshold=threshold, scale=scale)
+
+        # Ellipse-fit xi^2 function to minimize wrt T0
+        def BNfunc(T0, Pb, P1, PEPOCH, psr):
+            """
+            Calculate the xi2 for the Peven/Podd fit for specific T0/Pb combo
+            """
+            Peven, Podd = psr.Peo(Pb=Pb, T0=T0, P1=P1, PEPOCH=PEPOCH)
+            OM, P0, RAMP, xi2 = psr.oe_ABC_leastsq(Peven, Podd)
+            return xi2
+        
+        def nloglik(ecc, P0, RAMP, OM, T0, PB, periods, psr):
+            pars = np.array([P0, RAMP, OM, T0, ecc, PB])
+            pd = array_to_pardict(pars, which='RED')
+            return -psr.loglikelihood(pardict=pd, model='RED', periods=periods)
+        
+        #def nloglik(ecc, P0, A1, OM, T0, PB, P1, PEPOCH, psr):
+        #    pars = np.array([P0, P1, PEPOCH, PB, ecc, A1, T0, OM, 0.0, 0.0])
+        #    pd = array_to_pardict(pars, which='BT')
+        #    return -psr.loglikelihood(pardict=pd, model='BT')
+
+        for jj, P1c in enumerate(P1cands):
+            for ii, Pbe in enumerate(PBcands[jj]):
+                TASCprop = 0.5*(np.min(self.mjds)+np.max(self.mjds))
+                T0C = np.linspace(\
+                        np.float64(TASCprop-0.25*Pbe), \
+                        np.float64(TASCprop+0.25*Pbe), N_T0)
+
+                # Scan over the T0 values
+                PbX, T0s, OMs, P0s, RAMPs, xi2 = self.BNscan(Pbe, T0C, \
+                        P1=P1c, PEPOCH=PEPOCH)
+
+                if not np.all(xi2 == np.inf):
+                    # Find local minima, and produce candidates of T0
+                    args = (Pbe, P1c, PEPOCH, self)
+                    T0CC = findCandidates(T0C, xi2, BNfunc, args=args, \
+                            comp='log10', threshold=0.1)
+
+                    # For every PB/T0 candidate, obtain the parameter fits, and add to the lists
+                    for T0_cand in T0CC:
+                        Peven, Podd = self.Peo(Pb=Pbe, T0=T0_cand, \
+                                P1=P1c, PEPOCH=PEPOCH)
+                        OMc, P0, RAMP, xi2 = self.oe_ABC_leastsq(Peven, Podd)
+
+                        if RAMP < 0.0:
+                            RAMP = -RAMP
+                            OMc += 180.0
+
+                        # Convert/mirror OM to all quadrants
+                        OMs = [np.fmod(720.0+OMc, 360.0), np.fmod(900-OMc, 360.0), np.fmod(720-OMc, 360.0), np.fmod(900+OMc, 360.0)]
+                        
+                        for OM in OMs:
+                            # Take into account the quadratic spindown
+                            periods = self.periods - (self.mjds-PEPOCH) * P1c * SECS_PER_DAY
+
+                            # Now find the eccentricity for each candidate
+                            eccp = np.linspace(0.0, 1.0, N_ECC, endpoint=False)
+                            args = (P0, RAMP, OM, T0_cand, Pbe, periods, self)
+                            nll = np.array([nloglik(ecc, *args) for ecc in eccp])
+
+                            # Make a list with eccentricity candidates
+                            ecc_cand = findCandidates(eccp, nll, nloglik, args=args, comp='flat', threshold=0.5)
+                            # Add all the candidates to the lists
+                            for ecc in ecc_cand:
+                                # Convert to the BT model:
+                                P0bt, A1bt = A1P0fromRED(P0, RAMP, ecc, OM, Pbe)
+
+                                Pb_l.append(Pbe)
+                                T0_l.append(T0_cand)
+                                OM_l.append(OM)
+                                P0_l.append(P0bt)
+                                A1_l.append(A1bt)
+                                ECC_l.append(ecc)
+                                P1_l.append(P1c)
+                                PEPOCH_l.append(PEPOCH)
+                                RAJ_l.append(self['RA'].val)
+                                DECJ_l.append(self['DEC'].val)
+                
+        return np.array([P0_l, P1_l, PEPOCH_l, Pb_l, ECC_l, A1_l, T0_l, OM_l, \
+                        RAJ_l, DECJ_l]).T
+
+
 
     def haveCandidate(self, cand, sols, pcovs):
         """
