@@ -227,7 +227,6 @@ def eccentric_anomaly(E, mean_anomaly):
     ma = np.where(ma < 0.0, ma+2*np.pi, ma)
     eccentricity = E
     ecc_anom_old = ma
-    #print ma
     ecc_anom = ma + eccentricity*np.sin(ecc_anom_old)
     iter = 0
     # This is a simple iteration to solve Kepler's Equation
@@ -237,7 +236,6 @@ def eccentric_anomaly(E, mean_anomaly):
               iter < 50:
         ecc_anom_old = ecc_anom
         ecc_anom = ma + eccentricity*np.sin(ecc_anom_old)
-        #print(">1",  ecc_anom, iter)
         iter+=1
 
     elif(np.alen(ecc_anom) ==1):
@@ -245,7 +243,6 @@ def eccentric_anomaly(E, mean_anomaly):
               iter < 50:
         ecc_anom_old = ecc_anom
         ecc_anom = ma + eccentricity*np.sin(ecc_anom_old)
-        #print("=1", ecc_anom, iter)
         iter+=1
 
     return ecc_anom
@@ -635,43 +632,45 @@ def findCandidates(par, stat, func, args=(), comp='log10', threshold=0.2):
         mv = np.log10(stat[ind])
         msk = np.log10(stat) < mv+threshold
     elif comp=='flat':
-        mv = stat[ind]
-        msk = stat < mv + threshold
+        maxstat = np.max(stat)
+        mv = stat[ind] - maxstat
+        msk = stat-maxstat < mv + threshold
     else:
         raise NotImplemented("Unknown comparison string")
 
-    # Select all values below the threshold
-    inds = np.nonzero(msk)[0]
-
-    # All neighboring candidates should be counted as one. Group them
-    bucket_inds = [[inds[0]]]
-
-    for ii in inds[1:]:
-        if ii == bucket_inds[-1][-1]+1:
-            bucket_inds[-1].append(ii)
-        else:
-            bucket_inds.append([ii])
-
-    # For every group of candidates, we should have to minimize the roughness
     candidates = []
-    for ii, bucket in enumerate(bucket_inds):
-        bucket = np.array(bucket)
-        
-        # Use the brent minimizer with the following bracket
-        if len(bucket) > 1:
-            bracket = (par[bucket[0]], par[bucket[-1]])
-        else:
-            minind = max(0, bucket[0]-1)
-            maxind = min(len(par)-1, bucket[0]+1)
-            bracket = (par[minind], par[maxind])
+    if np.sum(msk) > 0:
+        # Select all values below the threshold
+        inds = np.nonzero(msk)[0]
 
-        res = so.minimize_scalar(func, \
-                bracket=bracket, \
-                args=args, method='brent')
+        # All neighboring candidates should be counted as one. Group them
+        bucket_inds = [[inds[0]]]
 
-        cand = min(max(res.x, bracket[0]), bracket[1])
+        for ii in inds[1:]:
+            if ii == bucket_inds[-1][-1]+1:
+                bucket_inds[-1].append(ii)
+            else:
+                bucket_inds.append([ii])
 
-        candidates.append(cand)
+        # For every group of candidates, we should have to minimize the roughness
+        for ii, bucket in enumerate(bucket_inds):
+            bucket = np.array(bucket)
+            
+            # Use the brent minimizer with the following bracket
+            if len(bucket) > 1:
+                bracket = (par[bucket[0]], par[bucket[-1]])
+            else:
+                minind = max(0, bucket[0]-1)
+                maxind = min(len(par)-1, bucket[0]+1)
+                bracket = (par[minind], par[maxind])
+
+            res = so.minimize_scalar(func, \
+                    bracket=bracket, \
+                    args=args, method='brent')
+
+            cand = min(max(res.x, bracket[0]), bracket[1])
+
+            candidates.append(cand)
 
     return np.array(candidates)
 
@@ -1144,14 +1143,14 @@ class orbitpulsar(object):
         Calculate the roughness plot
 
         @param pbmin:   Minimum orbital period to search (7e-3 days = 10min)
-        @param pbmax:   Maximum orbital period to search (Tmax)
+        @param pbmax:   Maximum orbital period to search (5*Tmax)
         @param frac:    Minimum fractional change to scan (0.02)
 
         @return: pb, roughness
         """
         if pbmax is None:
             Tmax = np.max(self.mjds) - np.min(self.mjds)
-            pbmax = Tmax
+            pbmax = 5*Tmax
 
         Ntrials = int( ((pbmax-pbmin)*Tmax*2*np.pi/frac)**(1.0/3.0)/pbmin )
         ind = np.arange(Ntrials)
@@ -1166,7 +1165,7 @@ class orbitpulsar(object):
         Tmax = np.max(self.mjds) - np.min(self.mjds)
         Pmax = np.max(self.periods) - np.min(self.periods)
         if pbmax is None:
-            pbmax = Tmax
+            pbmax = 5*Tmax
         if PEPOCH is None:
             PEPOCH = 0.5*(np.max(self.mjds)+np.max(self.mjds))
 
