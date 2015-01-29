@@ -1061,6 +1061,8 @@ class orbitpulsar(object):
         self.mjds = np.array(mjds)
         self.periods = self.orbitModel(mjds = self.mjds, model=model) + \
                 np.random.randn(nobs) * self.periodserrs
+        if model is not None:
+            self.binaryModel = model
 
     def roughness_noerr(self, pb):
         """
@@ -1681,14 +1683,19 @@ class orbitpulsar(object):
             pd = array_to_pardict(cand, which=model)
             ll.append(self.loglikelihood(pardict=pd, model=model))
 
+        # Make sure all loglikelihood values are finite
+        mskfin = np.isfinite(ll)
+        cands = cands[mskfin]
+        ll = np.array(ll)[mskfin]
+
         # Which ll-candidates to consider (3.0 is a pretty broad inclusion rate)
         ll = np.array(ll) - np.max(ll)
-        msk = (ll > - (10**ll_threshold) * len(self.mjds))
+        msk = (ll >= - (10**ll_threshold) * len(self.mjds))
 
         # Residuals (for leastsq function)
         def resids(pars, psr):
             pd = array_to_pardict(pars, which=model)
-            return psr.orbitResiduals(pardict=pd, weight=True, model=model)
+            return np.float64(psr.orbitResiduals(pardict=pd, weight=True, model=model))
 
         # For all selected candidates, perform an optimization
         sols = []
