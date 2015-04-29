@@ -63,7 +63,7 @@ class QtipWindow(QtGui.QMainWindow):
             parfile=None, timfile=None, perfile=None, **kwargs):
         super(QtipWindow, self).__init__(parent)
         self.setWindowTitle('QtIpython interface to PINT/libstempo')
-        
+
         # Initialise basic gui elements
         self.initUI()
 

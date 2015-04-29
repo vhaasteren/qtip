@@ -603,68 +603,70 @@ class LTPulsar(BasePulsar):
     @property
     def pars(self):
         """Returns tuple of names of parameters that are fitted (deprecated, use fitpars)."""
-        return self._psr.fitpars
+        return self.fitpars
 
     @property
     def fitpars(self):
         """Returns tuple of names of parameters that are fitted."""
-        return self._psr.fitpars
+        return self._psr.pars(which='fit')
 
     @property
     def setpars(self):
         """Returns tuple of names of parameters that have been set."""
-        return self._psr.setpars
+        return self._psr.pars(which='set')
 
     @property
     def allpars(self):
         """Returns tuple of names of all tempo2 parameters (whether set or unset, fit or not fit)."""
-        return self._psr.allpars
+        return self._psr.pars(which='all')
 
     @property
     def vals(self):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted (deprecated, use fitvals)."""
+        raise NotImplementedError("Deprecated!")
         return self._psr.vals
 
     @vals.setter
     def vals(self, values):
+        raise NotImplementedError("Deprecated!")
         self._psr.fitvals = values
 
     @property
     def fitvals(self):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted."""
-        return self._psr.fitvals
+        return self._psr.vals(which='fit')
 
     @fitvals.setter
     def fitvals(self, values):
-        self._psr.fitvals = values
+        return self._psr.vals(which='fit', values=values)
 
     @property
     def errs(self):
         """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        return self._psr.fiterrs
+        return self.fiterrs
 
     @property
     def fiterrs(self):
         """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        return self._psr.fiterrs
+        return self._psr.errs(which='fit')
 
     @fiterrs.setter
     def fiterrs(self, values):
-        self._psr.fiterrs = values
+        self._psr.errs(which='fit', values=values)
 
     @property
     def setvals(self):
         """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that have been set."""
-        return self._psr.setvals
+        return self._psr.vals(which='set')
 
     @setvals.setter
     def setvals(self, values):
-        self._psr.setvals = values
+        return self._psr.vals(which='set', values=values)
 
     @property
     def seterrs(self):
         """Returns a numpy longdouble vector of errors of all parameters that have been set."""
-        return self._psr.seterrs
+        self._psr.errs(which='set', values=values)
 
     # the best way to access prefit pars would be through the same interface:
     # psr.prefit['parname'].val, psr.prefit['parname'].err, perhaps even psr.prefit.cols
