@@ -461,6 +461,8 @@ class BinaryWidget(QtGui.QWidget):
             # Perform the least-squares fit
             plsq = so.leastsq(resids, np.float64(fpars), args=(self.bpsr, apars, fitmsk))
 
+            print("cov: ", plsq[1])
+
             # Place the new paramerers back in the boxes
             apars[fitmsk] = plsq[0]
             self.bpsr.vals(which='set', newvals=apars)

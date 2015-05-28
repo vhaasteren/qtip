@@ -344,6 +344,8 @@ class PlkFitboxesWidget(QtGui.QWidget):
         This is the signal handler when a checkbox is changed. The changed checkbox
         value will be propagated back to the psr object.
         """
+        # TODO: instead of using 'psr', just use a callback function to the main
+        #       window here
         # Check who sent the signal
         sender = self.sender()
         parchanged = sender.text()

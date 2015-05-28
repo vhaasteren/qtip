@@ -686,7 +686,7 @@ class LTPulsar(BasePulsar):
 
     @deleted.setter
     def deleted(self, values):
-        self._psr.deleted = values
+        self._psr.deleted[:] = values
 
     @property
     def toas(self):
@@ -724,7 +724,8 @@ class LTPulsar(BasePulsar):
 
     @property
     def prefitresiduals(self):
-        return self._psr.prefit.residuals
+        print("DEPRECATED: prefit will be residuals replaced with fit history")
+        return self.residuals
 
     def designmatrix(self, updatebats=True, fixunits=False):
         return self._psr.designmatrix(updatebats, fixunits)
@@ -970,10 +971,6 @@ class PPulsar(BasePulsar):
         """Returns a numpy longdouble vector of errors of all parameters that have been set."""
         #return self._psr.seterrs
         return np.array([0.0, 0.0])
-
-    # the best way to access prefit pars would be through the same interface:
-    # psr.prefit['parname'].val, psr.prefit['parname'].err, perhaps even psr.prefit.cols
-    # since the prefit values don't change, it's OK for psr.prefit to be a static attribute
 
     @property
     def binarymodel(self):
