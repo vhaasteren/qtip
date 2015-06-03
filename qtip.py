@@ -535,7 +535,8 @@ class QtipWindow(QtGui.QMainWindow):
 
                 # Change directory to the base directory of the tim-file to deal with
                 # INCLUDE statements in the tim-file
-                os.chdir(dirname)
+                if dirname != '':
+                    os.chdir(dirname)
 
                 # Load the pulsar
                 cell = "psr = qp."+pclass+"('"+relparfile+"', '"+reltimfile+"')"
@@ -543,7 +544,8 @@ class QtipWindow(QtGui.QMainWindow):
                 psr = self.kernel.shell.ns_table['user_local']['psr']
 
                 # Change directory back to where we were
-                os.chdir(savedir)
+                if dirname != '':
+                    os.chdir(savedir)
             else:
                 cell = "psr = qp."+pclass+"(testpulsar=True)"
                 self.kernel.shell.run_cell(cell)
@@ -563,7 +565,6 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Update the plk widget
         self.plkWidget.setPulsar(psr)
-        #self.binaryWidget.setPulsar(psr)
 
         # Communicating with the kernel goes as follows
         # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)

@@ -185,7 +185,6 @@ class PlkActionsWidget(QtGui.QWidget):
 
         self.parent = parent
         self.updatePlot = None
-        self.psr = None
         self.reFit_callback = None
 
         self.hbox = QtGui.QHBoxLayout()     # One horizontal layout
@@ -217,20 +216,16 @@ class PlkActionsWidget(QtGui.QWidget):
 
         self.setLayout(self.hbox)
 
-    def setPulsar(self, psr, updatePlot, reFit):
+    def setCallbacks(self, updatePlot, reFit):
         """
-        Memorize the pulsar
+        Callback functions
         """
-        self.psr = psr
         self.updatePlot = updatePlot
         self.reFit_callback = reFit
 
     def reFit(self):
         if self.reFit_callback is not None:
             self.reFit_callback()
-        #if not self.psr is None:
-        #    self.psr.fit()
-        #    self.updatePlot()
 
     def writePar(self):
         print("Write Par clicked")
@@ -254,7 +249,7 @@ class PlkFitboxesWidget(QtGui.QWidget):
         super(PlkFitboxesWidget, self).__init__(parent, **kwargs)
 
         self.parent = parent
-        self.psr = None
+        self.boxChecked = None
 
         # The checkboxes are ordered on a grid
         self.hbox = QtGui.QHBoxLayout()     # One horizontal layout
@@ -272,15 +267,19 @@ class PlkFitboxesWidget(QtGui.QWidget):
         # Initially there are no fitboxes, so just add the hbox
         self.setLayout(self.hbox)
 
-    def setPulsar(self, psr):
-        """
-        We've got a new pulsar
 
-        @param psr:     The new XPulsar psr object
+    def setCallbacks(self, boxChecked, setpars, fitpars, nofitbox):
         """
-        self.psr = psr
+        Set the callback functions
+
+        @param boxChecked:      Callback function, when box is checked
+        @param setpars:         psr.parameters(which='set')
+        @param fitpars:         psr.parameters(which='fit')
+        @param nofitbox:        Which parameters not to have a box for
+        """
+        self.boxChecked = boxChecked
         self.deleteFitCheckBoxes()
-        self.addFitCheckBoxes(psr.setpars, psr.fitpars, psr.nofitboxpars)
+        self.addFitCheckBoxes(setpars, fitpars, nofitbox)
 
     def addFitCheckBoxes(self, setpars, fitpars, nofitbox):
         """
@@ -355,12 +354,11 @@ class PlkFitboxesWidget(QtGui.QWidget):
         for fcbox in self.vboxes:
             items = (fcbox.itemAt(i) for i in range(fcbox.count())) 
             for w in items:
-                #print("Text is:", w.widget().text())
                 if isinstance(w, QtGui.QWidgetItem) and \
                         isinstance(w.widget(), QtGui.QCheckBox) and \
                         parchanged == w.widget().text():
-                    self.psr[parchanged].fit = bool(w.widget().checkState())
-                    print("{0} set to {1}".format(parchanged, self.psr[parchanged].fit))
+                    self.boxChecked(parchanged, bool(w.widget().checkState()))
+                    print("{0} set to {1}".format(parchanged, bool(w.widget().checkState())))
 
 
 
@@ -371,7 +369,6 @@ class PlkXYPlotWidget(QtGui.QWidget):
     def __init__(self, parent=None, **kwargs):
         super(PlkXYPlotWidget, self).__init__(parent, **kwargs)
 
-        self.psr = None
         self.parent = parent
 
         # We are going to use a grid layout:
@@ -439,11 +436,10 @@ class PlkXYPlotWidget(QtGui.QWidget):
 
         self.setLayout(self.grid)
 
-    def setPulsar(self, psr, updatePlot):
+    def setCallbacks(self, updatePlot):
         """
-        We've got a new pulsar!
+        Set the callback functions
         """
-        self.psr = psr
         self.updatePlot = updatePlot
 
     def plotids(self):
@@ -536,8 +532,9 @@ class PlkWidget(QtGui.QWidget):
         # At startup, all the widgets are visible
         self.xyChoiceVisible = True
         self.fitboxVisible = True
-        self.actionsVisible = True
-        self.layoutMode = 1         # (0 = none, 1 = all, 2 = only fitboxes, 3 = fit & action)
+        self.actionsVisible = False
+        #self.layoutMode = 1         # (0 = none, 1 = all, 2 = only fitboxes, 3 = fit & action)
+        self.layoutMode = 4         # (0 = none, 1 = all, 2 = only xy select, 3 = only fit, 4 = xy select & fit)
 
     def setColorScheme(self, start=True):
         """
@@ -592,14 +589,24 @@ class PlkWidget(QtGui.QWidget):
         self.psr = psr
 
         # Update the fitting checkboxes
-        self.fitboxesWidget.setPulsar(psr)
-        self.xyChoiceWidget.setPulsar(psr, self.updatePlot)
-        self.actionsWidget.setPulsar(psr, self.updatePlot, self.reFit)
+        self.fitboxesWidget.setCallbacks(self.fitboxChecked, psr.setpars,
+                psr.fitpars, psr.nofitboxpars)
+        self.xyChoiceWidget.setCallbacks(self.updatePlot)
+        self.actionsWidget.setCallbacks(self.updatePlot, self.reFit)
 
         # Draw the residuals
         self.xyChoiceWidget.updateChoice()
         # This screws up the show/hide logistics
         #self.show()
+
+    def fitboxChecked(self, parchanged, newstate):
+        """
+        When a fitbox is (un)checked, this callback function is called
+
+        @param parchanged:  Which parameter has been (un)checked
+        @param newstate:    The new state of the checkbox
+        """
+        self.psr[parchanged].fit = newstate
 
     def reFit(self):
         """
@@ -828,7 +835,7 @@ class PlkWidget(QtGui.QWidget):
         elif (ukey == ord('M') or ukey == ord('m')) and \
                 modifiers == QtCore.Qt.ControlModifier:
             # Change the window
-            self.layoutMode = (1+self.layoutMode)%4
+            self.layoutMode = (1+self.layoutMode)%5
             if self.layoutMode == 0:
                 self.xyChoiceVisible = False
                 self.fitboxVisible = False
@@ -838,11 +845,15 @@ class PlkWidget(QtGui.QWidget):
                 self.fitboxVisible = True
                 self.actionsVisible = True
             elif self.layoutMode == 2:
-                self.xyChoiceVisible = False
-                self.fitboxVisible = True
-                self.actionsVisible = True
+                self.xyChoiceVisible = True
+                self.fitboxVisible = False
+                self.actionsVisible = False
             elif self.layoutMode == 3:
                 self.xyChoiceVisible = False
+                self.fitboxVisible = True
+                self.actionsVisible = False
+            elif self.layoutMode == 4:
+                self.xyChoiceVisible = True
                 self.fitboxVisible = True
                 self.actionsVisible = False
             self.showVisibleWidgets()
