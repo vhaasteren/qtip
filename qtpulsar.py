@@ -60,16 +60,15 @@ except ImportError:
     have_libstempo = False
 
 try:
-    import pint.models as tm
-    from pint.phase import Phase
-    import pint.models.dd as dd
-    from pint import toa
+    #import pint.models as tm
+    #from pint.phase import Phase
+    #import pint.models.dd as dd
+    #from pint import toa
+    import pint.ltinterface as lti
     print("PINT available")
     have_pint = True
 except ImportError:
-    tm = None
-    Phase = None
-    toa = None
+    lti = None
     print("PINT not available")
     have_pint = False
 
@@ -99,6 +98,7 @@ def get_engine(trypint=True):
 
     @param trypint: If True, give priority to pint
     """
+    raise RuntimeError("This one will be deprecated!")
     if not trypint and have_libstempo:
         return 'libstempo', 'LTPulsar'
     elif have_pint:
@@ -109,59 +109,6 @@ def get_engine(trypint=True):
         raise NotImplemented("Piccard pulsars not yet implemented")
     else:
         raise NotImplemented("Other pulsars not yet implemented")
-
-class tempopar:
-    """
-    Similar to the parameter class defined in libstempo, this class gives a nice
-    interface to the timing model parameters
-    """
-    def __init__(self, name, *args, **kwargs):
-
-        if name == 'START' or name == 'FINISH':
-            # Do something else here?
-            self.name = name
-            self._set = True
-            self._fit = False
-            self._val = 0.0
-            self._err = 0.0
-        else:
-            self.name = name
-            self._set = True
-            self._fit = False
-            self._val = 0.0
-            self._err = 0.0
-
-    @property
-    def val(self):
-        return self._val
-
-    @val.setter
-    def val(self, value):
-        self._val = value
-
-    @property
-    def err(self):
-        return self._err
-
-    @err.setter
-    def err(self, value):
-        self._err = value
-
-    @property
-    def fit(self):
-        return self._fit
-
-    @fit.setter
-    def fit(self, value):
-        self._fit = value
-
-    @property
-    def set(self):
-        return self._set
-
-    @set.setter
-    def set(self, value):
-        self.set = value
 
 
 class BasePulsar(object):
@@ -174,6 +121,8 @@ class BasePulsar(object):
 
         super(BasePulsar, self).__init__()
 
+    def setpriors(self):
+        """Set the priors for all parameters"""
         self.isolated = ['pre-fit', 'post-fit', 'mjd', 'year', 'serial', \
             'day of year', 'frequency', 'TOA error', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
@@ -303,7 +252,6 @@ class BasePulsar(object):
             })
         # Do DDH, DDK, ELL1, ELL1H, MSS, T2-PTA, T2
 
-    @property
     def orbitalphase(self):
         """
         For a binary pulsar, calculate the orbital phase. Otherwise return an
@@ -327,7 +275,6 @@ class BasePulsar(object):
 
         return phase
 
-    @property
     def dayofyear(self):
         """
         Return the day of the year for all the TOAs of this pulsar
@@ -338,7 +285,6 @@ class BasePulsar(object):
 
         return self.stoas - mjdy
 
-    @property
     def year(self):
         """
         Calculate the year for all the TOAs of this pulsar
@@ -357,7 +303,6 @@ class BasePulsar(object):
         return gyear + (self.stoas - mjdy) / (mjdy1 - mjdy)
 
 
-    @property
     def siderealt(self):
         pass
         """
@@ -450,8 +395,6 @@ double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
 }
 
         """
-        
-
 
     def data_from_label(self, label):
         """
@@ -463,14 +406,10 @@ double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
         """
         data, error, plotlabel = None, None, None
 
-        if label == 'pre-fit':
-            data = self.prefitresiduals * 1e6
+        if label == 'Residuals':
+            data = self.residuals() * 1e6
             error = self.toaerrs
-            plotlabel = r"Pre-fit residual ($\mu$s)"
-        elif label == 'post-fit':
-            data = self.residuals * 1e6
-            error = self.toaerrs
-            plotlabel = r"Post-fit residual ($\mu$s)"
+            plotlabel = r"Timing residual ($\mu$s)"
         elif label == 'mjd':
             data = self.stoas
             error = self.toaerrs * 1e-6
