@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim: tabstop=4:softtabstop=4:shiftwidth=4:expandtab
 """
-qtpulsar: An adaptor class for the Qtip interface. This class will handle all
+pulsarwrapper: An adaptor class for the Qtip interface. This class will handle all
 the timing package interactions. This allows Qtip to work as well with libstempo
 as PINT.
 
@@ -11,67 +11,32 @@ as PINT.
 
 from __future__ import print_function
 from __future__ import division
+
 import os, sys
-
-# Importing all the stuff for the IPython console widget
-from IPython.qt.console.rich_ipython_widget import RichIPythonWidget
-from IPython.qt.inprocess import QtInProcessKernelManager
-from IPython.lib import guisupport
-
-from PyQt4 import QtGui, QtCore
-
-# Importing all the stuff for the matplotlib widget
-import matplotlib
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
-from matplotlib.figure import Figure
+import pysolvepulsar as psp
+import logging
 
 # Numpy etc.
 import numpy as np
-import time
-import tempfile
-from constants import J1744_parfile, J1744_timfile, J1744_parfile_basic 
+import scipy.linalg as sl
 
 # For date conversions
 import jdcal        # pip install jdcal
 
+# Use the same interface for pint and libstempo
 try:
-    from collections import OrderedDict
-except ImportError:
-    from ordereddict import OrderedDict
-
-# Import libstempo and Piccard
-try:
-    import piccard as pic
-    print("Piccard available")
-    have_piccard = True
-except ImportError:
-    pic = None
-    print("Piccard not available")
-    have_piccard = False
-
-try:
-    import libstempo as lt
-    print("Libstempo available")
-    have_libstempo = True
-except ImportError:
-    lt = None
-    print("Libstempo not available")
-    have_libstempo = False
-
-try:
-    #import pint.models as tm
-    #from pint.phase import Phase
-    #import pint.models.dd as dd
-    #from pint import toa
     import pint.ltinterface as lti
-    print("PINT available")
+    ltsi = None
     have_pint = True
 except ImportError:
-    lti = None
-    print("PINT not available")
+    lti, ltsi = None, None
     have_pint = False
-
+try:
+    import libstempo as lt, libstempo.toasim as lts
+    have_libstempo = True
+except ImportError:
+    lt, lts = None, None
+    have_libstempo = False
 
 def mjd2gcal(mjds):
     """
@@ -92,23 +57,415 @@ def mjd2gcal(mjds):
     
     return gyear, gmonth, gday, gfd
 
-def get_engine(trypint=True):
-    """
-    Return a working engine
+# Derived PulsarSolver class, with some extra display functionality
+class PSPulsar(psp.PulsarSolver):
+    def __init__(self, parfile, timfile, priors=None, logfile=None,
+            loglevel=logging.DEBUG, delete_prob=0.01, mP0=1.0,
+            backend='libstempo'):
+        """Initialize the pulsar solver
 
-    @param trypint: If True, give priority to pint
-    """
-    raise RuntimeError("This one will be deprecated!")
-    if not trypint and have_libstempo:
-        return 'libstempo', 'LTPulsar'
-    elif have_pint:
-        return 'pint', 'PPulsar'
-    elif have_libstempo:
-        return 'libstempo', 'LTPulsar'
-    elif have_piccard:
-        raise NotImplemented("Piccard pulsars not yet implemented")
-    else:
-        raise NotImplemented("Other pulsars not yet implemented")
+        Initialize the pulsar solver by loading a libstempo object from a
+        parfile and a timfile, and by setting the priors from a prior dictionary
+
+        :param parfile:
+            Filename of a tempo2 parfile
+
+        :param timfile:
+            Filename of a tempo2 timfile
+
+        :param priors:
+            Dictionary describing the priors. priors[key] = (val, err)
+
+        :param logfile:
+            Name of the logfile
+
+        :param loglevel:
+            Level of logging
+
+        :param delete_prob:
+            Proability that an observation needs to be deleted. Can be an array,
+            with per-obs probabilities as well (default: 0.01)
+
+        :param mP0:
+            How many pulse periods fit within one epoch
+
+        :param backend:
+            What timing package to use ('libstempo'/'pint')
+        """
+        super(PSPulsar, self).__init__(parfile, timfile, priors=priors,
+                logfile=logfile, loglevel=loglevel, delete_prob=delete_prob,
+                mP0=mP0, backend=backend)
+        
+        self.init_prediction_psr(parfile)
+
+    def init_prediction_psr(self, parfile, nobs=100):
+        """Initialize a fake pulsar, just for prediction purposes
+
+        Initialize a fake pulsar, with 100 observations (for speed)
+
+        :param parfile:
+            Parfile to base the pulsar on
+        """
+        # TODO: Make this work with PINT!
+        obstimes = np.linspace(54000, 55000, nobs)
+        self.predpsr_nobs = nobs
+        self.predpsr = lts.fakepulsar(parfile, obstimes, 0.1, observatory='ao')
+
+        # Remove JUMP parameters
+        for par in self.predpsr.pars(which='set'):
+            if par[:4] == 'JUMP':
+                self.predpsr[par].val = 0.0
+                self.predpsr[par].err = 0.0
+                self.predpsr[par].set = False
+                self.predpsr[par].fit = False
+
+        lts.make_ideal(self.predpsr)
+
+    def get_mock_prediction(self, obstimes, dd):
+        """Given a set of observation times, and a linear-fit results
+        dictionary, return the 1-sigma prediction spread
+        """
+        # Create new observations for the mock pulsar
+        self.predpsr.stoas[:] = obstimes
+        self.predpsr.formbats()
+        Mt = self.predpsr.designmatrix(fixunits=True, fixsigns=True, \
+                incoffset=False)
+        Mo = np.ones((self.predpsr_nobs, 1))
+        Mpred = np.append(Mt, Mo, axis=1)
+
+        # Obtain the parameter translation
+        parlabels = dd['parlabels']
+        parlabels_t = self.predpsr.pars(which='fit')
+        parlabels_pred = list(parlabels_t) + ['PatchOffset']
+        pmap = np.array([parlabels.index(par) for par in parlabels_pred])
+
+        dpars = dd['dpars'][pmap]
+        Sigma = dd['Sigma'][:,pmap][pmap,:]
+        dt_r = np.dot(Mpred, dpars)
+        dt_rr = np.dot(Mpred, np.dot(Sigma, Mpred.T))
+        dt_stdrp = np.sqrt(np.diag(dt_rr))
+
+        return dt_r, dt_stdrp
+
+    def get_mock_realizations(self, obstimes, dd, ntrials=200):
+        """Given a set of observation times, and a linear-fit result dictionary,
+        return mock realizations so one can plot a 'Bayesiogram'"""
+        # Create new observations for the mock pulsar
+        self.predpsr.stoas[:] = obstimes
+        self.predpsr.formbats()
+        Mt = self.predpsr.designmatrix(fixunits=True, fixsigns=True, \
+                incoffset=False)
+        Mo = np.ones((self.predpsr_nobs, 1))
+        Mpred = np.append(Mt, Mo, axis=1)
+
+        # Obtain the parameter translation
+        parlabels = dd['parlabels']
+        parlabels_t = self.predpsr.pars(which='fit')
+        parlabels_pred = list(parlabels_t) + ['PatchOffset']
+        pmap = np.array([parlabels.index(par) for par in parlabels_pred])
+
+        # Create the linear system
+        dpars = dd['dpars'][pmap]
+        Sigma = dd['Sigma'][:,pmap][pmap,:]
+        cf = sl.cholesky(Sigma, lower=True)
+        #realizations = np.zeros((len(obstimes), ntrials))
+        xi = np.random.randn(len(Sigma), ntrials)
+
+        # Produce the realizations
+        dt_r = np.dot(Mpred, dpars)
+        dt_mr = np.dot(Mpred, np.dot(cf, xi))
+
+        #dt_rr = np.dot(Mpred, np.dot(Sigma, Mpred.T))
+        #dt_stdrp = np.sqrt(np.diag(dt_rr))
+
+        return dt_r, dt_mr
+
+    def _orbitalphase(self):
+        """Return the orbital phase
+
+        For a binary pulsar, calculate the orbital phase. Otherwise return an
+        array of zeros. (Based on the tempo2 plk plugin)
+        """
+        if 'T0' in self.pars(which='set'): # self['T0'].set:
+            tpb = (self.toas() - self['T0'].val) / self['PB'].val
+        elif 'TASC' in self.pars(which='set'): #self['TASC'].set:
+            tpb = (self.toas() - self['TASC'].val) / self['PB'].val
+        else:
+            print("ERROR: Neither T0 nor tasc set...")
+            tpb = (self.toas() - self['T0'].val) / self['PB'].val
+            
+        if not 'PB' in self.pars(which='set'): #self['PB'].set:
+            print("WARNING: This is not a binary pulsar")
+            phase = np.zeros(self.nobs)
+        else:
+            #if self['PB'].set:
+            pbdot = self['PB'].val
+            phase = tpb % 1
+
+        return phase
+
+    def _dayofyear(self):
+        """Return the day of the year
+
+        Return the day of the year for all the TOAs of this pulsar
+        """
+        gyear, gmonth, gday, gfd = mjd2gcal(self.stoas())
+
+        mjdy = np.array([jdcal.gcal2jd(gyear[ii], 1, 0)[1] for ii in range(len(gyear))])
+
+        return self.stoas() - mjdy
+
+    def _year(self):
+        """Return the year for all the TOAs of this pulsar
+        """
+        #day, jyear = self.dayandyear_old()
+        gyear, gmonth, gday, gfd = mjd2gcal(self.stoas())
+
+        # MJD of start of the year (31st Dec)
+        mjdy = np.array([jdcal.gcal2jd(gyear[ii], 1, 0)[1] for ii in range(len(gfd))])
+        # MJD of end of the year
+        mjdy1 = np.array([jdcal.gcal2jd(gyear[ii]+1, 1, 0)[1] for ii in range(len(gfd))])
+
+        # Day of the year
+        doy = self.stoas() - mjdy
+        
+        return gyear + (self.stoas() - mjdy) / (mjdy1 - mjdy)
+
+    def _siderealt(self):
+        pass
+        # TEMPO2 code that we can use for the sidereal time etc.
+
+    #--- Some extra quantities we need to be able to calculate for plotting
+    def orbitalphase(self, cand=None, exclude_nonconnected=False):
+        """Return the orbital phase, possibly excluding non-connected obsns
+
+        Return the orbital phase. If exclude_nonconnected is True, then only
+        return the values for which the patches in cand contain more than one
+        toa
+
+        Note: exclude_nonconnected will/might mess up the ordering of the
+              toas
+
+        :param cand:
+            The candidate solution object
+
+        :param exclude_nonconnected:
+            If True, only return uncertainties within coherent patches with more
+            than one residual
+        """
+        phase = self._psr.orbitalphase()[self._isort]
+        selection = self.get_canonical_selection(cand, exclude_nonconnected)
+        return phase[selection]
+
+    def dayofyear(self, cand=None, exclude_nonconnected=False):
+        """Return day of the year, possibly excluding non-connected obsns
+
+        Return the day of the year. If exclude_nonconnected is True, then only
+        return the values for which the patches in cand contain more than one
+        toa
+
+        Note: exclude_nonconnected will/might mess up the ordering of the
+              toas
+
+        :param cand:
+            The candidate solution object
+
+        :param exclude_nonconnected:
+            If True, only return uncertainties within coherent patches with more
+            than one residual
+        """
+        phase = self._dayofyear()[self._isort]
+        selection = self.get_canonical_selection(cand, exclude_nonconnected)
+        return phase[selection]
+
+    def year(self, cand=None, exclude_nonconnected=False):
+        """Return the year, possibly excluding non-connected obsns
+
+        Return the year. If exclude_nonconnected is True, then only
+        return the values for which the patches in cand contain more than one
+        toa
+
+        Note: exclude_nonconnected will/might mess up the ordering of the
+              toas
+
+        :param cand:
+            The candidate solution object
+
+        :param exclude_nonconnected:
+            If True, only return uncertainties within coherent patches with more
+            than one residual
+        """
+        phase = self._year()[self._isort]
+        selection = self.get_canonical_selection(cand, exclude_nonconnected)
+        return phase[selection]
+
+    def data_from_label(self, label, cand=None, exclude_nonconnected=False):
+        """
+        Given a label, return the data that corresponds to it
+
+        @param label:   The label of which we want to obtain the data
+
+        @return:    data, error, plotlabel
+        """
+        data, error, plotlabel = None, None, None
+
+        if label == 'Residuals':
+            data = self.residuals(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = self.toaerrs(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            plotlabel = r"Timing residual ($\mu$s)"
+        elif label == 'mjd':
+            data = self.stoas(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = self.toaerrs(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            plotlabel = r'MJD'
+        elif label == 'orbital phase':
+            data = self.orbitalphase(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = None
+            plotlabel = 'Orbital Phase'
+        elif label == 'serial':
+            data = np.arange(self.nobs)
+            error = None
+            plotlabel = 'TOA number'
+        elif label == 'day of year':
+            data = self.dayofyear(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = None
+            plotlabel = 'Day of the year'
+        elif label == 'year':
+            data = self.year(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = None
+            plotlabel = 'Year'
+        elif label == 'frequency':
+            data = self.freqs(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = None
+            plotlabel = r"Observing frequency (MHz)"
+        elif label == 'TOA error':
+            data = self.toaerrs(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = None
+            plotlabel = "TOA uncertainty"
+        elif label == 'elevation':
+            data = self.elevation(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = None
+            plotlabel = 'Elevation'
+        elif label == 'rounded MJD':
+            stoas = self.stoas(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            data = np.floor(stoas + 0.5)
+            error = None
+            #error = self.toaerrs(cand=cand,
+            #        exclude_nonconnected=exclude_nonconnected)
+            plotlabel = r'MJD'
+        elif label == 'sidereal time':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'hour angle':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        elif label == 'para. angle':
+            print("WARNING: parameter {0} not yet implemented".format(label))
+        
+        return data, error, plotlabel
+
+    def siderealt(self):
+        pass
+        """
+       else if (plot==13 || plot==14 || plot==15) 
+          /* 13 = Sidereal time, 14 = hour angle, 15 = parallactic angle */
+       {
+          double tsid,sdd,erad,hlt,alng,hrd;
+          double toblq,oblq,pc,ph;
+          double siteCoord[3],ha;
+          observatory *obs;
+          //      printf("In here\n");
+          obs = getObservatory(psr[0].obsn[iobs].telID);
+          erad = sqrt(obs->x*obs->x+obs->y*obs->y+obs->z*obs->z);//height(m)
+          hlt  = asin(obs->z/erad); // latitude
+          alng = atan2(-obs->y,obs->x); // longitude
+          hrd  = erad/(2.99792458e8*499.004786); // height (AU)
+          siteCoord[0] = hrd * cos(hlt) * 499.004786; // dist from axis (lt-sec)
+          siteCoord[1] = siteCoord[0]*tan(hlt); // z (lt-sec)
+          siteCoord[2] = alng; // longitude
+
+          toblq = (psr[0].obsn[iobs].sat+2400000.5-2451545.0)/36525.0;
+          oblq = (((1.813e-3*toblq-5.9e-4)*toblq-4.6815e1)*toblq +84381.448)/3600.0;
+
+          pc = cos(oblq*M_PI/180.0+psr[0].obsn[iobs].nutations[1])*psr[0].obsn[iobs].nutations[0];
+
+          lmst2(psr[0].obsn[iobs].sat+psr[0].obsn[iobs].correctionUT1/SECDAY,0.0,&tsid,&sdd);
+          tsid*=2.0*M_PI;
+          /* Compute the local, true sidereal time */
+          ph = tsid+pc-siteCoord[2];  
+          ha = (fmod(ph,2*M_PI)-psr[0].param[param_raj].val[0])/M_PI*12;
+          if (plot==13)
+             x[count] = (float)fmod(ph/M_PI*12,24.0);
+          else if (plot==14)
+             x[count] = (float)(fmod(ha,12));
+          else if (plot==15)
+          {
+             double cp,sqsz,cqsz,pa;
+             double phi,dec;
+             phi =  hlt;
+             dec =  psr[0].param[param_decj].val[0];
+             cp =   cos(phi);
+             sqsz = cp*sin(ha*M_PI/12.0);
+             cqsz = sin(phi)*cos(dec)-cp*sin(dec)*cos(ha*M_PI/12.0);
+             if (sqsz==0 && cqsz==0) cqsz=1.0;
+             pa=atan2(sqsz,cqsz);
+             x[count] = (float)(pa*180.0/M_PI);
+          }
+          //      printf("Local sidereal time = %s %g %g %g %g %g\n",psr[0].obsn[iobs].fname,ph,tsid,pc,siteCoord[2],x[count]);
+       }
+        """
+
+        """
+// Get sidereal time
+double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
+{
+   double xlst,sdd;
+   double gmst0;
+   double a = 24110.54841;
+   double b = 8640184.812866;
+   double c = 0.093104;
+   double d = -6.2e-6;
+   double bprime,cprime,dprime;
+   double tu0,fmjdu1,dtu,tu,seconds_per_jc,gst;
+   int nmjdu1;
+
+   nmjdu1 = (int)mjd;
+   fmjdu1 = mjd - nmjdu1;
+
+   tu0 = ((double)(nmjdu1-51545)+0.5)/3.6525e4;
+   dtu  =fmjdu1/3.6525e4;
+   tu = tu0+dtu;
+   gmst0 = (a + tu0*(b+tu0*(c+tu0*d)))/86400.0;
+   seconds_per_jc = 86400.0*36525.0;
+
+   bprime = 1.0 + b/seconds_per_jc;
+   cprime = 2.0 * c/seconds_per_jc;
+   dprime = 3.0 * d/seconds_per_jc;
+
+   sdd = bprime+tu*(cprime+tu*dprime);
+
+   gst = gmst0 + dtu*(seconds_per_jc + b + c*(tu+tu0) + d*(tu*tu+tu*tu0+tu0*tu0))/86400;
+   xlst = gst - olong/360.0;
+   xlst = fortran_mod(xlst,1.0);
+
+   if (xlst<0.0)xlst=xlst+1.0;
+
+   *tsid = xlst;
+   *tsid_der = sdd;
+   return 0.0;
+}
+        """
+
+
+
 
 
 class BasePulsar(object):
@@ -120,6 +477,9 @@ class BasePulsar(object):
     def __init__(self):
 
         super(BasePulsar, self).__init__()
+
+        self.setpriors()
+
 
     def setpriors(self):
         """Set the priors for all parameters"""
@@ -252,22 +612,23 @@ class BasePulsar(object):
             })
         # Do DDH, DDK, ELL1, ELL1H, MSS, T2-PTA, T2
 
+
     def orbitalphase(self):
         """
         For a binary pulsar, calculate the orbital phase. Otherwise return an
         array of zeros. (Based on the tempo2 plk plugin)
         """
         if self['T0'].set:
-            tpb = (self.toas - self['T0'].val) / self['PB'].val
+            tpb = (self.toas() - self['T0'].val) / self['PB'].val
         elif self['TASC'].set:
-            tpb = (self.toas - self['TASC'].val) / self['PB'].val
+            tpb = (self.toas() - self['TASC'].val) / self['PB'].val
         else:
             print("ERROR: Neither T0 nor tasc set...")
-            tpb = (self.toas - self['T0'].val) / self['PB'].val
+            tpb = (self.toas() - self['T0'].val) / self['PB'].val
             
         if not self['PB'].set:
             print("WARNING: This is not a binary pulsar")
-            phase = np.zeros(len(self.toas))
+            phase = np.zeros(len(self.toas()))
         else:
             if self['PB'].set:
                 pbdot = self['PB'].val
@@ -305,710 +666,4 @@ class BasePulsar(object):
 
     def siderealt(self):
         pass
-        """
-       else if (plot==13 || plot==14 || plot==15) 
-          /* 13 = Sidereal time, 14 = hour angle, 15 = parallactic angle */
-       {
-          double tsid,sdd,erad,hlt,alng,hrd;
-          double toblq,oblq,pc,ph;
-          double siteCoord[3],ha;
-          observatory *obs;
-          //      printf("In here\n");
-          obs = getObservatory(psr[0].obsn[iobs].telID);
-          erad = sqrt(obs->x*obs->x+obs->y*obs->y+obs->z*obs->z);//height(m)
-          hlt  = asin(obs->z/erad); // latitude
-          alng = atan2(-obs->y,obs->x); // longitude
-          hrd  = erad/(2.99792458e8*499.004786); // height (AU)
-          siteCoord[0] = hrd * cos(hlt) * 499.004786; // dist from axis (lt-sec)
-          siteCoord[1] = siteCoord[0]*tan(hlt); // z (lt-sec)
-          siteCoord[2] = alng; // longitude
-
-          toblq = (psr[0].obsn[iobs].sat+2400000.5-2451545.0)/36525.0;
-          oblq = (((1.813e-3*toblq-5.9e-4)*toblq-4.6815e1)*toblq +84381.448)/3600.0;
-
-          pc = cos(oblq*M_PI/180.0+psr[0].obsn[iobs].nutations[1])*psr[0].obsn[iobs].nutations[0];
-
-          lmst2(psr[0].obsn[iobs].sat+psr[0].obsn[iobs].correctionUT1/SECDAY,0.0,&tsid,&sdd);
-          tsid*=2.0*M_PI;
-          /* Compute the local, true sidereal time */
-          ph = tsid+pc-siteCoord[2];  
-          ha = (fmod(ph,2*M_PI)-psr[0].param[param_raj].val[0])/M_PI*12;
-          if (plot==13)
-             x[count] = (float)fmod(ph/M_PI*12,24.0);
-          else if (plot==14)
-             x[count] = (float)(fmod(ha,12));
-          else if (plot==15)
-          {
-             double cp,sqsz,cqsz,pa;
-             double phi,dec;
-             phi =  hlt;
-             dec =  psr[0].param[param_decj].val[0];
-             cp =   cos(phi);
-             sqsz = cp*sin(ha*M_PI/12.0);
-             cqsz = sin(phi)*cos(dec)-cp*sin(dec)*cos(ha*M_PI/12.0);
-             if (sqsz==0 && cqsz==0) cqsz=1.0;
-             pa=atan2(sqsz,cqsz);
-             x[count] = (float)(pa*180.0/M_PI);
-          }
-          //      printf("Local sidereal time = %s %g %g %g %g %g\n",psr[0].obsn[iobs].fname,ph,tsid,pc,siteCoord[2],x[count]);
-       }
-        """
-
-        """
-// Get sidereal time
-double lmst2(double mjd,double olong,double *tsid,double *tsid_der)
-{
-   double xlst,sdd;
-   double gmst0;
-   double a = 24110.54841;
-   double b = 8640184.812866;
-   double c = 0.093104;
-   double d = -6.2e-6;
-   double bprime,cprime,dprime;
-   double tu0,fmjdu1,dtu,tu,seconds_per_jc,gst;
-   int nmjdu1;
-
-   nmjdu1 = (int)mjd;
-   fmjdu1 = mjd - nmjdu1;
-
-   tu0 = ((double)(nmjdu1-51545)+0.5)/3.6525e4;
-   dtu  =fmjdu1/3.6525e4;
-   tu = tu0+dtu;
-   gmst0 = (a + tu0*(b+tu0*(c+tu0*d)))/86400.0;
-   seconds_per_jc = 86400.0*36525.0;
-
-   bprime = 1.0 + b/seconds_per_jc;
-   cprime = 2.0 * c/seconds_per_jc;
-   dprime = 3.0 * d/seconds_per_jc;
-
-   sdd = bprime+tu*(cprime+tu*dprime);
-
-   gst = gmst0 + dtu*(seconds_per_jc + b + c*(tu+tu0) + d*(tu*tu+tu*tu0+tu0*tu0))/86400;
-   xlst = gst - olong/360.0;
-   xlst = fortran_mod(xlst,1.0);
-
-   if (xlst<0.0)xlst=xlst+1.0;
-
-   *tsid = xlst;
-   *tsid_der = sdd;
-   return 0.0;
-}
-
-        """
-
-    def data_from_label(self, label):
-        """
-        Given a label, return the data that corresponds to it
-
-        @param label:   The label of which we want to obtain the data
-
-        @return:    data, error, plotlabel
-        """
-        data, error, plotlabel = None, None, None
-
-        if label == 'Residuals':
-            data = self.residuals() * 1e6
-            error = self.toaerrs
-            plotlabel = r"Timing residual ($\mu$s)"
-        elif label == 'mjd':
-            data = self.stoas
-            error = self.toaerrs * 1e-6
-            plotlabel = r'MJD'
-        elif label == 'orbital phase':
-            data = self.orbitalphase
-            error = None
-            plotlabel = 'Orbital Phase'
-        elif label == 'serial':
-            data = np.arange(len(self.stoas))
-            error = None
-            plotlabel = 'TOA number'
-        elif label == 'day of year':
-            data = self.dayofyear
-            error = None
-            plotlabel = 'Day of the year'
-        elif label == 'year':
-            data = self.year
-            error = None
-            plotlabel = 'Year'
-        elif label == 'frequency':
-            data = self.freqs
-            error = None
-            plotlabel = r"Observing frequency (MHz)"
-        elif label == 'TOA error':
-            data = self.toaerrs
-            error = None
-            plotlabel = "TOA uncertainty"
-        elif label == 'elevation':
-            data = self.elevation
-            error = None
-            plotlabel = 'Elevation'
-        elif label == 'rounded MJD':
-            # TODO: Do we floor, or round like this?
-            data = np.floor(self.stoas + 0.5)
-            error = self.toaerrs * 1e-6
-            plotlabel = r'MJD'
-        elif label == 'sidereal time':
-            print("WARNING: parameter {0} not yet implemented".format(label))
-        elif label == 'hour angle':
-            print("WARNING: parameter {0} not yet implemented".format(label))
-        elif label == 'para. angle':
-            print("WARNING: parameter {0} not yet implemented".format(label))
-        
-        return data, error, plotlabel
-
-    def mask(self, mtype='plot', flagID=None, flagVal=None):
-        """
-        Returns a mask of TOAs, depending on what is requestion by mtype
-
-        @param mtype:   What kind of mask is requested. (plot, deleted, range)
-        @param flagID:  If set, only give mask for a given flag (+flagVal)
-        @param flagVal: If set, only give mask for a given flag (+flagID)
-        """
-        msk = np.ones(len(self.stoas), dtype=np.bool)
-        if mtype=='range':
-            msk = np.ones(len(self.stoas), dtype=np.bool)
-            if self['START'].set and self['START'].fit:
-                msk[self.stoas < self['START'].val] = False
-            if self['FINISH'].set and self['FINISH'].fit:
-                msk[self.stoas > self['FINISH'].val] = False
-        elif mtype=='deleted':
-            msk = self.deleted
-        elif mtype=='noplot':
-            msk = self.deleted
-            if self['START'].set and self['START'].fit:
-                msk[self.stoas < self['START'].val] = True
-            if self['FINISH'].set and self['FINISH'].fit:
-                msk[self.stoas > self['FINISH'].val] = True
-        elif mtype=='plot':
-            msk = np.logical_not(self.deleted)
-            if self['START'].set and self['START'].fit:
-                msk[self.stoas < self['START'].val] = False
-            if self['FINISH'].set and self['FINISH'].fit:
-                msk[self.stoas > self['FINISH'].val] = False
-
-        return msk
-
-
-class LTPulsar(BasePulsar):
-    """
-    Abstract pulsar class. For now only uses libstempo, but functionality will
-    be delegated to derived classes when implementing
-    PINT/piccard/PAL/enterprise/whatever
-    """
-
-    def __init__(self, parfile=None, timfile=None, testpulsar=False):
-        """
-        Initialize the pulsar object
-
-        @param parfile:     Filename of par file
-        @param timfile:     Filename of tim file
-        @param testpulsar:  If true, load J1744 test pulsar
-        """
-
-        super(LTPulsar, self).__init__()
-
-        self._interface = "libstempo"
-        
-        if testpulsar:
-            # Write a test-pulsar, and open that for testing
-            parfilename = tempfile.mktemp()
-            timfilename = tempfile.mktemp()
-            parfile = open(parfilename, 'w')
-            timfile = open(timfilename, 'w')
-            parfile.write(J1744_parfile)
-            timfile.write(J1744_timfile)
-            parfile.close()
-            timfile.close()
-
-            self._psr = lt.tempopulsar(parfilename, timfilename, dofit=False)
-
-            os.remove(parfilename)
-            os.remove(timfilename)
-        elif parfile is not None and timfile is not None:
-            self._psr = lt.tempopulsar(parfile, timfile, dofit=False)
-        else:
-            raise ValueError("No valid pulsar to load")
-
-    @property
-    def name(self):
-        return self._psr.name
-
-    def __getitem__(self, key):
-        return self._psr[key]
-
-    def __contains__(self, key):
-        return key in self._psr
-
-    @property
-    def pars(self):
-        """Returns tuple of names of parameters that are fitted (deprecated, use fitpars)."""
-        return self.fitpars
-
-    @property
-    def fitpars(self):
-        """Returns tuple of names of parameters that are fitted."""
-        return self._psr.pars(which='fit')
-
-    @property
-    def setpars(self):
-        """Returns tuple of names of parameters that have been set."""
-        return self._psr.pars(which='set')
-
-    @property
-    def allpars(self):
-        """Returns tuple of names of all tempo2 parameters (whether set or unset, fit or not fit)."""
-        return self._psr.pars(which='all')
-
-    @property
-    def vals(self):
-        """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted (deprecated, use fitvals)."""
-        raise NotImplementedError("Deprecated!")
-        return self._psr.vals
-
-    @vals.setter
-    def vals(self, values):
-        raise NotImplementedError("Deprecated!")
-        self._psr.fitvals = values
-
-    @property
-    def fitvals(self):
-        """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted."""
-        return self._psr.vals(which='fit')
-
-    @fitvals.setter
-    def fitvals(self, values):
-        return self._psr.vals(which='fit', values=values)
-
-    @property
-    def errs(self):
-        """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        return self.fiterrs
-
-    @property
-    def fiterrs(self):
-        """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        return self._psr.errs(which='fit')
-
-    @fiterrs.setter
-    def fiterrs(self, values):
-        self._psr.errs(which='fit', values=values)
-
-    @property
-    def setvals(self):
-        """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that have been set."""
-        return self._psr.vals(which='set')
-
-    @setvals.setter
-    def setvals(self, values):
-        return self._psr.vals(which='set', values=values)
-
-    @property
-    def seterrs(self):
-        """Returns a numpy longdouble vector of errors of all parameters that have been set."""
-        self._psr.errs(which='set', values=values)
-
-    # the best way to access prefit pars would be through the same interface:
-    # psr.prefit['parname'].val, psr.prefit['parname'].err, perhaps even psr.prefit.cols
-    # since the prefit values don't change, it's OK for psr.prefit to be a static attribute
-
-    @property
-    def binarymodel(self):
-        return self._psr.binaryModel
-
-    @property
-    def ndim(self):
-        return self._psr.ndim
-
-    @property
-    def deleted(self):
-        return self._psr.deleted
-
-    @deleted.setter
-    def deleted(self, values):
-        self._psr.deleted[:] = values
-
-    @property
-    def toas(self):
-        """ Barycentric arrival times """
-        return self._psr.toas()
-
-    @property
-    def stoas(self):
-        """ Site arrival times """
-        return self._psr.stoas
-
-    @property
-    def toaerrs(self):
-        """ TOA uncertainties """
-        return self._psr.toaerrs
-
-    @property
-    def freqs(self):
-        """ Observing frequencies """
-        return self._psr.freqs
-
-    @property
-    def freqsSSB(self):
-        """ Observing frequencies """
-        return self._psr.freqsSSB
-
-    @property
-    def elevation(self):
-        """Source elevation"""
-        return self._psr.elevation()
-
-    @property
-    def residuals(self, updatebats=True, formresiduals=True):
-        return self._psr.residuals(updatebats, formresiduals)
-
-    @property
-    def prefitresiduals(self):
-        print("DEPRECATED: prefit will be residuals replaced with fit history")
-        return self.residuals
-
-    def designmatrix(self, updatebats=True, fixunits=False):
-        return self._psr.designmatrix(updatebats, fixunits)
-
-    def fit(self, iters=1):
-        """
-        Perform a fit with tempo2
-        """
-        # TODO: Figure out why the START and FINISH parameters get modified, and
-        # then fix this in libstempo?
-        if self['START'].set:
-            start = self['START'].val
-        else:
-            start = None
-
-        if self['FINISH'].set:
-            finish = self['FINISH'].val
-        else:
-            finish = None
-
-        # Perform the fit
-        self._psr.fit(iters)
-
-        if start is not None:
-            self['START'].val = start
-
-        if finish is not None:
-            self['FINISH'].val = finish
-
-    def chisq(self):
-        return self._psr.chisq()
-
-    def rd_hms(self):
-        return self._psr.rd_hms()
-
-    def savepar(self, parfile):
-        self._psr.savepar(parfile)
-
-    def savetim(self, timfile):
-        self._psr(timfile)
-
-    def phasejumps(self):
-        return self._psr.phasejumps()
-
-    def add_phasejump(self, mjd, phasejump):
-        self._psr.add_phasejump(mjd, phasejump)
-
-    def remove_phasejumps(self):
-        self._psr.remove_phasejumps()
-
-    @property
-    def nphasejumps(self):
-        return self._psr.nphasejumps
-
-
-
-class PPulsar(BasePulsar):
-    """
-    Abstract pulsar class. For now only uses PINT
-    """
-
-    def __init__(self, parfile=None, timfile=None, testpulsar=False):
-        """
-        Initialize the pulsar object
-
-        @param parfile:     Filename of par file
-        @param timfile:     Filename of tim file
-        @param testpulsar:  If true, load J1744 test pulsar
-        """
-
-        super(PPulsar, self).__init__()
-
-        # Create a timing-model
-        self._interface = "pint"
-        m = tm.StandardTimingModel()
-        #m = tm.DDTimingModel()
-        
-        if testpulsar:
-            # Write a test-pulsar, and open that for testing
-            parfilename = tempfile.mktemp()
-            timfilename = tempfile.mktemp()
-            parfile = open(parfilename, 'w')
-            timfile = open(timfilename, 'w')
-            parfile.write(J1744_parfile_basic)
-            timfile.write(J1744_timfile)
-            parfile.close()
-            timfile.close()
-        elif parfile is not None and timfile is not None:
-            parfilename = parfile
-            timfilename = timfile
-        else:
-            raise ValueError("No valid pulsar to load")
-
-        # We have a par/tim file. Read them in!
-        m.read_parfile(parfilename)
-
-        print("model.as_parfile():")
-        print(m.as_parfile())
-
-        try:
-            planet_ephems = m.PLANET_SHAPIRO.value
-        except AttributeError:
-            planet_ephems = False
-
-        t0 = time.time()
-        t = toa.get_TOAs(timfilename)
-        time_toa = time.time() - t0
-        t.print_summary()
-
-        sys.stderr.write("Read/corrected TOAs in %.3f sec\n" % time_toa)
-
-        self._mjds = t.get_mjds()
-        #d_tdbs = np.array([x.tdb.delta_tdb_tt for x in t.table['mjd']])
-        self._toaerrs = t.get_errors()
-        resids = np.zeros_like(self._mjds)
-        #ss_roemer = np.zeros_like(self._mjds)
-        #ss_shapiro = np.zeros_like(self._mjds)
-
-        sys.stderr.write("Computing residuals...\n")
-        t0 = time.time()
-        phases = m.phase(t.table)
-        resids = phases.frac
-
-        #for ii, tt in enumerate(t.table):
-        #    p = m.phase(tt)
-        #    resids[ii] = p.frac
-        #    ss_roemer[ii] = m.solar_system_geometric_delay(tt)
-        #    ss_shapiro[ii] = m.solar_system_shapiro_delay(tt)
-
-        time_phase = time.time() - t0
-        sys.stderr.write("Computed phases in %.3f sec\n" % time_phase)
-
-        # resids in (approximate) us:
-        self._resids_us = resids / float(m.F0.value) * 1e6
-        sys.stderr.write("RMS PINT residuals are %.3f us\n" % self._resids_us.std())
-
-        # Create a dictionary of the fitting parameters
-        self.pardict = OrderedDict()
-        self.pardict['START'] = tempopar('START')
-        self.pardict['FINISH'] = tempopar('FINISH')
-        self.pardict['RAJ'] = tempopar('RAJ')
-        self.pardict['DECJ'] = tempopar('DECJ')
-        self.pardict['PMRA'] = tempopar('PMRA')
-        self.pardict['PMDEC'] = tempopar('PMDEC')
-        self.pardict['F0'] = tempopar('F0')
-        self.pardict['F1'] = tempopar('F1')
-
-
-        if testpulsar:
-            os.remove(parfilename)
-            os.remove(timfilename)
-
-
-    @property
-    def name(self):
-        #return self._psr.name
-        return "J0000+0000"
-
-    def __getitem__(self, key):
-        #return self._psr[key]
-        return self.pardict[key]
-
-    def __contains__(self, key):
-        #return key in self._psr
-        return key in self.pardict
-
-    @property
-    def pars(self):
-        """Returns tuple of names of parameters that are fitted (deprecated, use fitpars)."""
-        #return self._psr.fitpars
-        return ('none')
-
-    @property
-    def fitpars(self):
-        """Returns tuple of names of parameters that are fitted."""
-        #return self._psr.fitpars
-        return ('F0', 'F1')
-
-    @property
-    def setpars(self):
-        """Returns tuple of names of parameters that have been set."""
-        #return self._psr.setpars
-        return ('F0', 'F1')
-
-    @property
-    def allpars(self):
-        """Returns tuple of names of all tempo2 parameters (whether set or unset, fit or not fit)."""
-        #return self._psr.allpars
-        return ('F0', 'F1')
-
-    @property
-    def vals(self):
-        """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted (deprecated, use fitvals)."""
-        #return self._psr.vals
-        return np.array([0.0, 0.0])
-
-    @vals.setter
-    def vals(self, values):
-        #self._psr.fitvals = values
-        pass
-
-    @property
-    def fitvals(self):
-        """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that are fitted."""
-        #return self._psr.fitvals
-        return np.array([0.0, 0.0])
-
-    @fitvals.setter
-    def fitvals(self, values):
-        #self._psr.fitvals = values
-        pass
-
-    @property
-    def errs(self):
-        """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        #return self._psr.fiterrs
-        return np.array([0.0, 0.0])
-
-    @property
-    def fiterrs(self):
-        """Returns a numpy longdouble vector of errors of all parameters that are fitted."""
-        #return self._psr.fiterrs
-        return np.array([0.0, 0.0])
-
-    @fiterrs.setter
-    def fiterrs(self, values):
-        #self._psr.fiterrs = values
-        pass
-
-    @property
-    def setvals(self):
-        """Returns (or sets from a sequence) a numpy longdouble vector of values of all parameters that have been set."""
-        #return self._psr.setvals
-        return np.array([0.0, 0.0])
-
-    @setvals.setter
-    def setvals(self, values):
-        #self._psr.setvals = values
-        pass
-
-    @property
-    def seterrs(self):
-        """Returns a numpy longdouble vector of errors of all parameters that have been set."""
-        #return self._psr.seterrs
-        return np.array([0.0, 0.0])
-
-    @property
-    def binarymodel(self):
-        #return self._psr.binaryModel
-        return 'single'
-
-    @property
-    def ndim(self):
-        #return self._psr.ndim
-        return 2
-
-    @property
-    def deleted(self):
-        #return self._psr.deleted
-        return np.zeros(len(self._mjds), dtype=np.bool)
-
-    @deleted.setter
-    def deleted(self, values):
-        #self._psr.deleted = values
-        pass
-
-    @property
-    def toas(self):
-        """ Barycentric arrival times """
-        #return self._psr.toas()
-        return self._mjds
-
-    @property
-    def stoas(self):
-        """ Site arrival times """
-        #raise NotImplemented("Not done")
-        print("WARNING: using _mjds instead of stoas")
-        #return self._psr.stoas
-        return self._mjds
-
-    @property
-    def toaerrs(self):
-        """ TOA uncertainties """
-        return self._toaerrs
-
-    @property
-    def freqs(self):
-        """ Observing frequencies """
-        #return self._psr.freqs
-        return np.zeros(len(self._mjds), dtype=np.double)
-
-    @property
-    def freqsSSB(self):
-        """ Observing frequencies """
-        #return self._psr.freqsSSB
-        return np.zeros(len(self._mjds), dtype=np.double)
-
-    @property
-    def residuals(self, updatebats=True, formresiduals=True):
-        #return self._psr.residuals(updatebats, formresiduals)
-        return self._resids_us*1e-6
-
-    @property
-    def prefitresiduals(self):
-        #return self._psr.prefit.residuals
-        return self._resids_us*1e-6
-
-    def designmatrix(self, updatebats=True, fixunits=False):
-        #return self._psr.designmatrix(updatebats, fixunits)
-        raise NotImplemented("Not done")
-        return None
-
-    def fit(self, iters=1):
-        #self._psr.fit(iters)
-        raise NotImplemented("Not done")
-
-    def chisq(self):
-        raise NotImplemented("Not done")
-        #return self._psr.chisq()
-        return 0.0
-
-    def rd_hms(self):
-        raise NotImplemented("Not done")
-        #return self._psr.rd_hms()
-        return None
-
-    def savepar(self, parfile):
-        #self._psr.savepar(parfile)
-        pass
-
-    def savetim(self, timfile):
-        #self._psr(timfile)
-        pass
-
-    def phasejumps(self):
-        return []
-
-    def add_phasejump(self, mjd, phasejump):
-        pass
-
-    def remove_phasejumps(self):
-        pass
-
-    @property
-    def nphasejumps(self):
-        return self._psr.nphasejumps
-
+        # TEMPO2 code that we can use for the sidereal time etc.

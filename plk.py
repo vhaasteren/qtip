@@ -157,7 +157,15 @@ import jdcal        # pip install jdcal
 
 import constants
 import qtpulsar as qp
+import pysolvepulsar as psp
 
+# All the types of quantities we will be able to plot in the plk widget
+plot_labels = ['Residuals', 'mjd', 'year', 'orbital phase', 'serial', \
+            'day of year', 'frequency', 'TOA error', 'elevation', \
+            'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
+nofitboxpars = ['START', 'FINISH', 'POSEPOCH', 'PEPOCH', 'DMEPOCH', \
+            'EPHVER', 'TZRMJD', 'TZRFRQ', 'TRES']
+plotrangestretch = 1.05
 
 # Design philosophy:
 # - The pulsar timing engine is dealt with through derivatives of the abstract
@@ -172,7 +180,6 @@ import qtpulsar as qp
 # Drawing is done through PlkWidget. There is a callback function 'updatePlot'
 # that all child widgets are allowed to call, but they should not get access to
 # any further data.
-# TODO: remove dependence on psr object in child widgets
 
 class PlkActionsWidget(QtGui.QWidget):
     """
@@ -341,10 +348,8 @@ class PlkFitboxesWidget(QtGui.QWidget):
     def changedFitCheckBox(self):
         """
         This is the signal handler when a checkbox is changed. The changed checkbox
-        value will be propagated back to the psr object.
+        value will be propagated back to the psr object through callbacks.
         """
-        # TODO: instead of using 'psr', just use a callback function to the main
-        #       window here
         # Check who sent the signal
         sender = self.sender()
         parchanged = sender.text()
@@ -392,8 +397,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
         # def setLabel(self, button):
 
         # Use an empty base pulsar to obtain the labels
-        psr = qp.BasePulsar()
-        self.xychoices = psr.plot_labels
+        self.xychoices = plot_labels
     
         self.setPlkXYPlotLayout()
 
@@ -428,7 +432,7 @@ class PlkXYPlotWidget(QtGui.QWidget):
 
             radio = QtGui.QRadioButton("")
             self.grid.addWidget(radio, 1+ii, 1+labellength, 1, 1)
-            if choice.lower() == 'post-fit':
+            if choice.lower() == 'residuals':
                 radio.setChecked(True)
                 self.ySelected = ii
             self.yButtonGroup.addButton(radio)
@@ -479,20 +483,22 @@ class PlkWidget(QtGui.QWidget):
     def __init__(self, parent=None, **kwargs):
         super(PlkWidget, self).__init__(parent, **kwargs)
 
+        self.psr = None         # PulsarSolver object
+        self.history = []       # History of previous solution candidates
+        self.h_ind = None       # History index
+        self.parent = parent
+
         self.initPlk()
         self.initPlkLayout()
         self.showVisibleWidgets()
-
-        self.psr = None
-        self.parent = parent
 
     def initPlk(self):
         self.setMinimumSize(650, 550)
 
         self.plkbox = QtGui.QVBoxLayout()                       # plkbox contains the whole plk widget
         self.xyplotbox = QtGui.QHBoxLayout()                    # plkbox contains the whole plk widget
-        self.fitboxesWidget = PlkFitboxesWidget(parent=self)    # Contains all the checkboxes
-        self.actionsWidget = PlkActionsWidget(parent=self)
+        #self.fitboxesWidget = PlkFitboxesWidget(parent=self)    # Contains all the checkboxes
+        #self.actionsWidget = PlkActionsWidget(parent=self)
 
         # We are creating the Figure here, so set the color scheme appropriately
         self.setColorScheme(True)
@@ -531,10 +537,29 @@ class PlkWidget(QtGui.QWidget):
 
         # At startup, all the widgets are visible
         self.xyChoiceVisible = True
-        self.fitboxVisible = True
+        self.fitboxVisible = False
         self.actionsVisible = False
-        #self.layoutMode = 1         # (0 = none, 1 = all, 2 = only fitboxes, 3 = fit & action)
-        self.layoutMode = 4         # (0 = none, 1 = all, 2 = only xy select, 3 = only fit, 4 = xy select & fit)
+        self.layoutMode = 0         # (0 = xy select, 1 = no xy select)
+
+        # Setup the user interface
+        self.init_user_interface()
+
+    def init_user_interface(self):
+        """Initialize the user interface (zoom, deletions)"""
+        if self.psr is None:
+            self.mask_delete = None
+            self.mask_zoom = None
+        else:
+            self.mask_delete = np.zeros(self.psr.nobs, dtype=np.bool)
+            self.mask_zoom = np.ones(self.psr.nobs, dtype=np.bool)
+
+        self.show_delete = False        # Whether we show deleted points
+        self.mergepatch_lower = None    # Which obs coordinate we are merging
+        self.mergepatch_higher = None   # Which obs coordinate we are merging
+        self.key_count = 0              # Iteration of the interface
+        self.pred_data = None           # Prediction data
+        self.pred_realizations = None   # Prediction realizations
+        self.pred_stay = 0              # How many more turns before deleting
 
     def setColorScheme(self, start=True):
         """
@@ -582,22 +607,39 @@ class PlkWidget(QtGui.QWidget):
         self.plkCanvas.draw()
         self.setColorScheme(False)
 
-    def setPulsar(self, psr):
+    def setPulsar(self, psr, history):
         """
         We've got a new pulsar!
         """
+        # Set the pysolvepulsar object
         self.psr = psr
+        self.history = history
+
+        # And set an initial candidate solution
+        cand = psp.CandidateSolution()
+        cand.set_solution(psr.get_prior_values(), *psr.get_start_solution())
+        self.history.append(cand)
+        self.h_ind = 0
+
+        # Setup the user interface
+        self.init_user_interface()
 
         # Update the fitting checkboxes
-        self.fitboxesWidget.setCallbacks(self.fitboxChecked, psr.setpars,
-                psr.fitpars, psr.nofitboxpars)
+        # TODO: do not use _psr
+        #self.fitboxesWidget.setCallbacks(self.fitboxChecked,
+        #    psr._psr.pars(which='set'), psr._psr.pars(which='fit'), nofitboxpars)
         self.xyChoiceWidget.setCallbacks(self.updatePlot)
-        self.actionsWidget.setCallbacks(self.updatePlot, self.reFit)
+        #self.actionsWidget.setCallbacks(self.updatePlot, self.reFit)
 
         # Draw the residuals
         self.xyChoiceWidget.updateChoice()
+
         # This screws up the show/hide logistics
         #self.show()
+
+    def get_new_parfilename(self):
+        """Return a new parfile name"""
+        return self.psr.name + time.strftime('%Y-%m-%d-%H.%M.%S.par')
 
     def fitboxChecked(self, parchanged, newstate):
         """
@@ -606,15 +648,135 @@ class PlkWidget(QtGui.QWidget):
         @param parchanged:  Which parameter has been (un)checked
         @param newstate:    The new state of the checkbox
         """
-        self.psr[parchanged].fit = newstate
+        #self.psr[parchanged].fit = newstate
+        pass
 
     def reFit(self):
         """
         We need to re-do the fit for this pulsar
         """
         if not self.psr is None:
-            self.psr.fit()
+            self.history = self.history[:self.h_ind+1]
+            newcand, loglik = self.psr.fit_constrained_iterative(
+                    self.history[self.h_ind])
+            self.history.append(newcand)
+            self.h_ind += 1
             self.updatePlot()
+    
+    def delete_observation(self, ind):
+        """Create a new candidate solution in which we delete this point"""
+        # Remove the history from here up
+        self.history = self.history[:self.h_ind+1]
+
+        # Copy the candidate solution and delete the point
+        newcand = psp.CandidateSolution(self.history[self.h_ind])
+        newcand.delete_observation(ind)
+
+        # Add the solution
+        self.history.append(newcand)
+        self.h_ind += 1
+
+        # Delete the observation from plotting
+        self.mask_delete[ind] = True
+
+    def merge_patches(self, lower, higher):
+        """Merge coherence patches, based on these indices
+
+        Merge all coherence patches between these MJDs.
+        """
+        # Obtain the data, on this scale
+        cand = self.history[self.h_ind]
+        xid, yid = self.xyChoiceWidget.plotids()
+        x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+
+        # Find all observations between 'lower' and 'higher'
+        inds = np.where(np.logical_and(x >= x[lower], x <= x[higher]))[0]
+
+        if len(inds) == 0:
+            # Nothing to merge
+            # TODO: Display a warning message?
+            return
+
+        # Create a new candidate solution, and remove history after here
+        self.history = self.history[:self.h_ind+1]
+        newcand = psp.CandidateSolution(self.history[self.h_ind])
+
+        # Find all the patches that belong to these observations
+        pinds = []
+        for ind in inds:
+            pind = newcand.get_patch_from_obsind(ind)
+            if pind is not None:
+                # This is not a deleted point
+                pinds.append(pind)
+
+        # We need a sorted list of unique indices
+        upinds = np.unique(pinds)
+
+        # We need the absolute pulse numbers, as determine
+        pulse_numbers = self.psr.pulsenumbers(newcand)
+
+        # Merge these patches
+        for ii, upind in enumerate(upinds[1:]):
+            # Indices of upinds change (all -1), after merger
+            m1, m2 = upinds[0], upind-ii
+
+            # Join, with no relative phase jump
+            newcand.join_patches(m1, m2, pulse_numbers, rpnjump=0)
+
+        # Add the solution
+        self.history.append(newcand)
+        self.h_ind += 1
+
+    def get_plot_patch_regions(self, x, msk, cand):
+        """Given a set of plotting data (x-axis), return patch ids
+
+        Given a set of plotting data for the x-axis, return the patch ids for
+        all plotted data that belong to a coherent patch. This allows plotting
+        the coherent patches in all plotting scenarios
+
+        :param x:
+            The x-axis values to plot (any data)
+
+        :param msk:
+            Mask of which observations to plot
+
+        :param cand:
+            Candidate solution
+
+        :return:
+            List of list of lists, which regions to highlight
+            (color, patch, indices)
+            Indices of x[msk][isort]
+        """
+        pvals = np.ones_like(x) * -1
+
+        for pp, patch in enumerate(cand.get_patches()):
+            pvals[patch] = pp
+
+        # Sort the selection of points
+        isort = np.argsort(x[msk], kind='mergesort')
+        xs = x[msk][isort]
+        pvs = pvals[msk][isort]
+        upvs = np.unique(pvs)
+
+        #bucket_ind = [[[]]]       # color, patch, indices
+        bucket_ind = []       # color, patch, indices
+        for cc, up in enumerate(upvs):
+            # Start a new color
+            bucket_ind.append([[]])
+            uinds = np.where(pvs == up)[0]
+
+            bucket_ind[cc][-1].append(uinds[0])
+            for jj in uinds[1:]:
+                if jj == bucket_ind[cc][-1][-1] + 1:
+                    # Next element, add to patch
+                    bucket_ind[cc][-1].append(jj)
+                else:
+                    # Elements are skipped. Start new patch
+                    bucket_ind[cc].append([jj])
+
+        return bucket_ind
+
 
     def newFitParameters(self):
         """
@@ -629,14 +791,14 @@ class PlkWidget(QtGui.QWidget):
         Initialise the basic layout of this plk emulator emulator
         """
         # Initialise the plk box
-        self.plkbox.addWidget(self.fitboxesWidget)
+        #self.plkbox.addWidget(self.fitboxesWidget)
 
         self.xyplotbox.addWidget(self.xyChoiceWidget)
         self.xyplotbox.addWidget(self.plkCanvas)
 
         self.plkbox.addLayout(self.xyplotbox)
 
-        self.plkbox.addWidget(self.actionsWidget)
+        #self.plkbox.addWidget(self.actionsWidget)
         self.setLayout(self.plkbox)
 
     def showVisibleWidgets(self):
@@ -644,9 +806,29 @@ class PlkWidget(QtGui.QWidget):
         Show the correct widgets in the plk Window
         """
         self.xyChoiceWidget.setVisible(self.xyChoiceVisible)
-        self.fitboxesWidget.setVisible(self.fitboxVisible)
-        self.actionsWidget.setVisible(self.actionsVisible)
+        #self.fitboxesWidget.setVisible(self.fitboxVisible)
+        #self.actionsWidget.setVisible(self.actionsVisible)
 
+    def get_plotting_mask(self):
+        """Return a mask we use for plotting"""
+        return self.mask_zoom.copy() if self.show_delete else \
+                np.logical_and(self.mask_zoom, np.logical_not(self.mask_delete))
+
+    def get_screen_limits(self, x, y, yerr=None):
+        """Return the screen limits, based on the plotting data"""
+        xave = 0.5 * (np.max(x) + np.min(x))
+        xmin = xave - plotrangestretch * (xave - np.min(x))
+        xmax = xave + plotrangestretch * (np.max(x) - xave)
+        if yerr is None:
+            yave = 0.5 * (np.max(y) + np.min(y))
+            ymin = yave - plotrangestretch * (yave - np.min(y))
+            ymax = yave + plotrangestretch * (np.max(y) - yave)
+        else:
+            yave = 0.5 * (np.max(y+yerr) + np.min(y-yerr))
+            ymin = yave - plotrangestretch * (yave - np.min(y-yerr))
+            ymax = yave + plotrangestretch * (np.max(y+yerr) - yave)
+
+        return (xmin, xmax, ymin, ymax)
 
     def updatePlot(self):
         """
@@ -657,17 +839,18 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.grid(True)
 
         if self.psr is not None:
-            # Get a mask for the plotting points
-            msk = self.psr.mask('plot')
+            # The candidate solution we are plotting now
+            cand = self.history[self.h_ind]
 
-            #print("Mask has {0} toas".format(np.sum(msk)))
+            # Get a mask for the plotting points
+            msk = self.get_plotting_mask()
 
             # Get the IDs of the X and Y axis
             xid, yid = self.xyChoiceWidget.plotids()
 
             # Retrieve the data
-            x, xerr, xlabel = self.psr.data_from_label(xid)
-            y, yerr, ylabel = self.psr.data_from_label(yid)
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+            y, yerr, ylabel = self.psr.data_from_label(yid, cand=cand)
 
             if x is not None and y is not None and np.sum(msk) > 0:
                 xp = x[msk]
@@ -679,32 +862,79 @@ class PlkWidget(QtGui.QWidget):
                     yerrp = None
 
                 self.plotResiduals(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
+                self.plotCoherentPatches(x, msk, yp, yerrp, cand)
+                if self.pred_data is not None and \
+                        xid == 'mjd' and yid == 'Residuals':
+                    #self.plotPrediction(*self.pred_data)
+                    self.plotPredictionRealizations(self.pred_realizations,
+                            *self.pred_data)
 
-                if xid in ['mjd', 'year', 'rounded MJD']:
-                    self.plotPhaseJumps(self.psr.phasejumps())
+                    self.pred_stay -= 1
+                    if self.pred_stay == 0:
+                        self.pred_data = None
+                        self.pred_realizations = None
             else:
                 raise ValueError("Nothing to plot!")
 
         self.plkCanvas.draw()
         self.setColorScheme(False)
 
+    def plotCoherentPatches(self, x, msk, y, yerr, cand):
+        """Plot the coherence patches as colored regions
+
+        Plot the coherence patches as colored regions.
+
+        :param x:
+            All the x-axis values
+
+        :param msk:
+            Mask of x-values, which we will plot
+
+        :param cand:
+            Candidate solution
+        """
+        bucket = self.get_plot_patch_regions(x, msk, cand)
+        isort = np.argsort(x[msk], kind='mergesort')
+        xs = x[msk][isort]
+
+        # Screen limits
+        xmin, xmax, ymin, ymax = self.get_screen_limits(x[msk], y, yerr)
+
+        colors = ['b', 'r', 'g', 'c', 'y', 'k']
+        ncols = len(colors)
+
+        ncol = 0
+        for bucket_col in [x for x in bucket if len(x) > 1 or len(x[0]) > 1]:
+            # Have a patch with more than one element, or multiple patches
+            for patch in bucket_col:
+                if patch[0] == 0: #x[patch[0]] == np.min(x[msk]):
+                    # Left-val edge of screen
+                    x_left = xmin
+                else:
+                    x_left = 0.5 * (xs[patch[0]] + xs[patch[0]-1])
+
+                if patch[-1] == len(xs)-1:#x[patch[-1]] == np.max(x[msk]):
+                    # Rigth-val edge of screen
+                    x_right = xmax
+                else:
+                    x_right = 0.5 * (xs[patch[-1]] + xs[patch[-1]+1])
+
+                # Draw the patch
+                self.plkAxes.fill_between([x_left, x_right], ymin, ymax, \
+                        facecolor=colors[ncol % ncols], alpha=0.1)
+
+            ncol += 1
+
 
     def plotResiduals(self, x, y, yerr, xlabel, ylabel, title):
         """
         Update the plot, given all the plotting info
         """
-        xave = 0.5 * (np.max(x) + np.min(x))
-        xmin = xave - 1.05 * (xave - np.min(x))
-        xmax = xave + 1.05 * (np.max(x) - xave)
+        xmin, xmax, ymin, ymax = self.get_screen_limits(x, y, yerr)
+
         if yerr is None:
-            yave = 0.5 * (np.max(y) + np.min(y))
-            ymin = yave - 1.05 * (yave - np.min(y))
-            ymax = yave + 1.05 * (np.max(y) - yave)
             self.plkAxes.scatter(x, y, marker='.', color='blue')
         else:
-            yave = 0.5 * (np.max(y+yerr) + np.min(y-yerr))
-            ymin = yave - 1.05 * (yave - np.min(y-yerr))
-            ymax = yave + 1.05 * (np.max(y+yerr) - yave)
             self.plkAxes.errorbar(x, y, yerr=yerr, fmt='.', color='blue')
 
         self.plkAxes.axis([xmin, xmax, ymin, ymax])
@@ -713,7 +943,37 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.set_ylabel(ylabel)
         self.plkAxes.set_title(title, y=1.03)
 
-    def plotPhaseJumps(self, phasejumps):
+    def plotPrediction(self, t, dt_r, dt_stdrp):
+        P0 = 1.0 / self.psr._psr['F0'].val
+        self.plkAxes.plot(t, dt_r, 'k--', linewidth=2.0)
+        rmin, rmax = dt_r-dt_stdrp, dt_r+dt_stdrp
+        rmin[rmin < -0.5*P0] = -0.5*P0
+        rmax[rmin > 0.5*P0] = 0.5*P0
+        self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.3)
+
+    def plotPredictionRealizations(self, mr, t, dt_r, dt_stdrp):
+        P0 = 1.0 / self.psr._psr['F0'].val
+        self.plkAxes.plot(t, dt_r, 'k--', linewidth=2.0)
+        rmin, rmax = dt_r-dt_stdrp, dt_r+dt_stdrp
+        rmin[rmin < -0.5*P0] = -0.5*P0
+        rmax[rmin > 0.5*P0] = 0.5*P0
+        self.plkAxes.plot(t, rmin, 'k-', linewidth=1.2)
+        self.plkAxes.plot(t, rmax, 'k-', linewidth=1.2)
+        self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.1)
+        for ii in range(mr.shape[1]):
+            r = mr[:,ii]
+            r[r < -0.5*P0] = -0.5*P0
+            r[r > 0.5*P0] = 0.5*P0
+            self.plkAxes.plot(t, dt_r+r, c='darkred', linestyle='-',
+                    linewidth=0.5, alpha=0.3)
+
+        #self.plkAxes.plot(t, dt_r, 'k--', linewidth=2.0)
+        #rmin, rmax = dt_r-dt_stdrp, dt_r+dt_stdrp
+        #rmin[rmin < -0.5*P0] = -0.5*P0
+        #rmax[rmin > 0.5*P0] = 0.5*P0
+        #self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.3)
+
+    def plotPhaseJumps_deprecated(self, phasejumps):
         """
         Plot the phase jump lines, if we have any
         """
@@ -739,14 +999,13 @@ class PlkWidget(QtGui.QWidget):
                             annotation_clip=False, color='darkred', \
                             size=7.0)
                     
-
     def setFocusToCanvas(self):
         """
         Set the focus to the plk Canvas
         """
         self.plkCanvas.setFocus()
 
-    def coord2point(self, cx, cy, which='xy'):
+    def coord2point(self, cx, cy, which='xy', mode='both'):
         """
         Given data coordinates x and y, obtain the index of the observations
         that is closest to it
@@ -754,21 +1013,26 @@ class PlkWidget(QtGui.QWidget):
         @param cx:      x-value of the coordinates
         @param cy:      y-value of the coordinates
         @param which:   which axis to include in distance measure [xy/x/y]
+        @param mode:    From which side to include (both/lower/higher)
+                        (used when which='x' or which='y'
         
         @return:    Index of observation
         """
         ind = None
 
         if self.psr is not None:
+            # The candidate solution we are plotting now
+            cand = self.history[self.h_ind]
+
             # Get a mask for the plotting points
-            msk = self.psr.mask('plot')
+            msk = self.get_plotting_mask()
 
             # Get the IDs of the X and Y axis
             xid, yid = self.xyChoiceWidget.plotids()
 
             # Retrieve the data
-            x, xerr, xlabel = self.psr.data_from_label(xid)
-            y, yerr, ylabel = self.psr.data_from_label(yid)
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+            y, yerr, ylabel = self.psr.data_from_label(yid, cand=cand)
 
             if np.sum(msk) > 0 and x is not None and y is not None:
                 # Obtain the limits
@@ -776,10 +1040,30 @@ class PlkWidget(QtGui.QWidget):
 
                 if which == 'xy':
                     dist = ((x[msk]-cx)/(xmax-xmin))**2 + ((y[msk]-cy)/(ymax-ymin))**2
-                elif which == 'x':
+                elif which == 'x' and mode == 'both':
                     dist = ((x[msk]-cx)/(xmax-xmin))**2
-                elif which == 'y':
+                elif which == 'y' and mode == 'both':
                     dist = ((y[msk]-cy)/(ymax-ymin))**2
+                elif which == 'x' and mode == 'lower':
+                    dist = ((x[msk]-cx)/(xmax-xmin))**2
+                    dist[x[msk]-cx >= 0] = np.inf
+                    if np.all(dist == np.inf):
+                        dist[np.argmin(x[msk])] = 0.0
+                elif which == 'x' and mode == 'higher':
+                    dist = ((x[msk]-cx)/(xmax-xmin))**2
+                    dist[x[msk]-cx <= 0] = np.inf
+                    if np.all(dist == np.inf):
+                        dist[np.argmax(x[msk])] = 0.0
+                elif which == 'y' and mode == 'lower':
+                    dist = ((y[msk]-cy)/(ymax-ymin))**2
+                    dist[y[msk]-cy >= 0] = np.inf
+                    if np.all(dist == np.inf):
+                        dist[np.argmin(x[msk])] = 0.0
+                elif which == 'y' and mode == 'higher':
+                    dist = ((y[msk]-cy)/(ymax-ymin))**2
+                    dist[y[msk]-cy <= 0] = np.inf
+                    if np.all(dist == np.inf):
+                        dist[np.argmax(x[msk])] = 0.0
                 else:
                     raise ValueError("Value {0} not a valid option for coord2point".format(which))
 
@@ -795,7 +1079,6 @@ class PlkWidget(QtGui.QWidget):
         This function can be called as a callback from the Canvas, or as a
         callback from Qt. So first some parsing must be done
         """
-
         if hasattr(event.key, '__call__'):
             ukey = event.key()
             modifiers = int(event.modifiers())
@@ -819,7 +1102,7 @@ class PlkWidget(QtGui.QWidget):
             if 'shift' in fkey:
                 modifiers += QtCore.Qt.ShiftModifier
             if 'alt' in fkey:
-                modifiers += QtCore.Qt.ShiftModifier
+                modifiers += QtCore.Qt.AltModifier
             if 'meta' in fkey:
                 modifiers += QtCore.Qt.MetaModifier
             if 'backspace' in fkey:
@@ -832,70 +1115,185 @@ class PlkWidget(QtGui.QWidget):
                 self.close()
             else:
                 self.parent.close()
+        if (ukey == ord('z') or ukey == ord('Z')) and \
+                (modifiers == QtCore.Qt.ControlModifier or \
+                modifiers == QtCore.Qt.MetaModifier):
+            # TODO: How do I really catch the MetaModifier? On OSX, I can't get
+            #       the command key
+            if self.h_ind > 0:
+                self.h_ind -= 1
+
+            self.updatePlot()
+        if (ukey == ord('r') or ukey == ord('R')) and \
+                (modifiers == QtCore.Qt.ControlModifier or \
+                modifiers == QtCore.Qt.MetaModifier):
+            # TODO: How do I really catch the MetaModifier? On OSX, I can't get
+            #       the command key
+            if self.h_ind + 1 < len(self.history):
+                self.h_ind += 1
+
+            self.updatePlot()
         elif (ukey == ord('M') or ukey == ord('m')) and \
                 modifiers == QtCore.Qt.ControlModifier:
+                #(modifiers == QtCore.Qt.ControlModifier or \
+                #modifiers == QtCore.Qt.MetaModifier):
             # Change the window
-            self.layoutMode = (1+self.layoutMode)%5
+            self.layoutMode = (1+self.layoutMode)%2
             if self.layoutMode == 0:
-                self.xyChoiceVisible = False
+                self.xyChoiceVisible = True
                 self.fitboxVisible = False
                 self.actionsVisible = False
             elif self.layoutMode == 1:
-                self.xyChoiceVisible = True
-                self.fitboxVisible = True
-                self.actionsVisible = True
-            elif self.layoutMode == 2:
-                self.xyChoiceVisible = True
-                self.fitboxVisible = False
-                self.actionsVisible = False
-            elif self.layoutMode == 3:
                 self.xyChoiceVisible = False
-                self.fitboxVisible = True
-                self.actionsVisible = False
-            elif self.layoutMode == 4:
-                self.xyChoiceVisible = True
-                self.fitboxVisible = True
+                self.fitboxVisible = False
                 self.actionsVisible = False
             self.showVisibleWidgets()
         elif ukey == ord('s'):
-            # Set START flag at xpos
-            # TODO: propagate back to the IPython shell
-            self.psr['START'].set = True
-            self.psr['START'].fit = True
-            self.psr['START'].val = xpos
+            # Get the x-value data
+            cand = self.history[self.h_ind]
+            xid, yid = self.xyChoiceWidget.plotids()
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+
+            # Get the index of the start-point
+            ind = self.coord2point(xpos, ypos, which='x', mode='higher')
+
+            # Mask everything before it (not the point itself)
+            self.mask_zoom[x < x[ind]] = False
+
             self.updatePlot()
         elif ukey == ord('f'):
-            # Set FINISH flag as xpos
-            # TODO: propagate back to the IPython shell
-            self.psr['FINISH'].set = True
-            self.psr['FINISH'].fit = True
-            self.psr['FINISH'].val = xpos
+            # Get the x-value data
+            cand = self.history[self.h_ind]
+            xid, yid = self.xyChoiceWidget.plotids()
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+
+            # Get the index of the start-point
+            ind = self.coord2point(xpos, ypos, which='x', mode='lower')
+
+            # Mask everything after it (not the point itself)
+            self.mask_zoom[x > x[ind]] = False
+
             self.updatePlot()
         elif ukey == ord('u'):
             # Unzoom
-            # TODO: propagate back to the IPython shell
-            self.psr['START'].set = True
-            self.psr['START'].fit = False
-            self.psr['START'].val = np.min(self.psr.toas)
-            self.psr['FINISH'].set = True
-            self.psr['FINISH'].fit = False
-            self.psr['FINISH'].val = np.max(self.psr.toas)
+            self.mask_zoom[:] = True
             self.updatePlot()
         elif ukey == ord('d'):
             # Delete data point
-            # TODO: propagate back to the IPython shell
-            # TODO: Fix libstempo!
             ind = self.coord2point(xpos, ypos)
-            #print("Deleted:", self.psr._psr.deleted)
-            # TODO: fix this hack properly in libstempo
-            tempdel = self.psr.deleted
-            tempdel[ind] = True
-            self.psr.deleted = tempdel
+            self.delete_observation(ind)
+
             self.updatePlot()
-            #print("Index deleted = ", ind)
-            #print("Deleted:", self.psr.deleted[ind])
+        elif ukey == ord('['):
+            # Start of a coherence-patch merge
+            # Get the x-value data
+            cand = self.history[self.h_ind]
+            xid, yid = self.xyChoiceWidget.plotids()
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+
+            # Get the index of the start-point
+            ind = self.coord2point(xpos, ypos, which='x', mode='higher')
+
+            if self.mergepatch_higher is not None:
+                self.merge_patches(ind, self.mergepatch_higher)
+
+                # Reset the memory
+                self.mergepatch_lower = None
+                self.mergepatch_higher = None
+            else:
+                self.mergepatch_lower = ind
+
+            self.updatePlot()
+        elif ukey == ord(']'):
+            # End of a coherence-patch merge
+            # Get the x-value data
+            cand = self.history[self.h_ind]
+            xid, yid = self.xyChoiceWidget.plotids()
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+
+            # Get the index of the start-point
+            ind = self.coord2point(xpos, ypos, which='x', mode='lower')
+
+            if self.mergepatch_lower is not None:
+                self.merge_patches(self.mergepatch_lower, ind)
+
+                # Reset the memory
+                self.mergepatch_lower = None
+                self.mergepatch_higher = None
+            else:
+                self.mergepatch_higher = ind
+
+            self.updatePlot()
+        elif ukey == ord('c') or ukey == ord('C'):
+            # Split a coherence patch at this point
+            self.history = self.history[:self.h_ind+1]
+            newcand = psp.CandidateSolution(self.history[self.h_ind])
+            newcand = self.history[self.h_ind]
+            ind = self.coord2point(xpos, ypos, which='x', mode='higher')
+            xid, yid = self.xyChoiceWidget.plotids()
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=newcand)
+            pind = newcand.get_patch_from_obsind(ind)
+            if pind is not None:
+                patch = newcand._patches[pind]
+                msk = (x[patch] >= x[ind])
+                newcand.split_patch(pind, msk)
+
+                self.history.append(newcand)
+                self.h_ind += 1
+
+            self.updatePlot()
+        elif ukey == ord('e') or ukey == ord('E'):
+            # Do the extrapolation
+            # First obtain the plotting ranges etc.
+            cand = self.history[self.h_ind]
+            xid, yid = self.xyChoiceWidget.plotids()
+            if xid in ['mjd'] and yid in ['Residuals']:
+                # Get the screen layout
+                x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+                y, yerr, ylabel = self.psr.data_from_label(yid, cand=cand)
+                msk = self.get_plotting_mask()
+                xmin, xmax, ymin, ymax = self.get_screen_limits(x[msk],
+                        y[msk], yerr[msk])
+
+                # Obtain the patch from which we'll extrapolate
+                ind = self.coord2point(xpos, ypos, which='xy')
+                pind = cand.get_patch_from_obsind(ind)
+                if pind is not None:
+                    # Perform the linear least-squares extrapolation
+                    dd = self.psr.perform_linear_least_squares_fit_old(cand,
+                            fitpatch=pind)
+
+                    npobs = self.psr.predpsr_nobs
+                    obstimes = np.linspace(xmin, xmax, npobs)
+                    dt_r, dt_stdrp = self.psr.get_mock_prediction(obstimes, dd)
+                    self.pred_data = (obstimes, dt_r, dt_stdrp)
+                    self.pred_realizations = self.psr.get_mock_realizations(\
+                            obstimes, dd)[1]
+                    self.pred_stay = 2
+
+            self.updatePlot()
         elif ukey == ord('+') or ukey == ord('-'):
             # Add/delete a phase jump
+            rpnjump = 1 if ukey == ord('-') else -1
+
+            self.history = self.history[:self.h_ind+1]
+            newcand = psp.CandidateSolution(self.history[self.h_ind])
+            #newcand = self.history[self.h_ind]
+            ind = self.coord2point(xpos, ypos, which='x', mode='higher')
+            xid, yid = self.xyChoiceWidget.plotids()
+            x, xerr, xlabel = self.psr.data_from_label(xid, cand=newcand)
+            pind = newcand.get_patch_from_obsind(ind)
+            if pind is not None:
+                patch = newcand._patches[pind]
+                msk = (x[patch] >= x[ind])
+
+                newcand.add_rpn_jump(pind, msk, rpnjump)
+
+                self.history.append(newcand)
+                self.h_ind += 1
+
+            self.updatePlot()
+            """
             jump = 1
             if ukey == ord('-'):
                 jump = -1
@@ -903,11 +1301,20 @@ class PlkWidget(QtGui.QWidget):
             ind = self.coord2point(xpos, ypos, which='x')
             self.psr.add_phasejump(self.psr.stoas[ind], jump)
             self.updatePlot()
+            """
         elif ukey == QtCore.Qt.Key_Backspace:
             # Remove all phase jumps
-            self.psr.remove_phasejumps()
-            self.updatePlot()
+            # Not necessary anymore
+            pass
+        elif ukey == ord('P'):
+            # Write a new parfile
+            parfilename = self.get_new_parfilename()
+            cand = self.history[self.h_ind]
+
+            dd = self.psr.perform_linear_least_squares_fit_old(cand)
+            self.psr.savepar(parfilename, dd)
         elif ukey == ord('<'):
+            """
             # Add a data point to the view on the left
             # TODO: Make this more Pythonic!
             if self.psr['START'].set and self.psr['START'].fit:
@@ -944,8 +1351,10 @@ class PlkWidget(QtGui.QWidget):
                     self.psr['START'].val = np.min(self.psr.stoas) - 1
                 elif np.sum(ltmask) == 0:
                     pass
-                self.updatePlot()
+            """
+            self.updatePlot()
         elif ukey == ord('>'):
+            """
             # Add a data point to the view on the left
             # TODO: Make this more Pythonic!
             if self.psr['FINISH'].set and self.psr['FINISH'].fit:
@@ -982,7 +1391,8 @@ class PlkWidget(QtGui.QWidget):
                     self.psr['FINISH'].val = np.max(self.psr.stoas) + 1
                 elif np.sum(gtmask) == 0:
                     pass
-                self.updatePlot()
+            """
+            self.updatePlot()
         elif ukey == ord('x'):
             # Re-do the fit, using post-fit values of the parameters
             self.reFit()
@@ -995,6 +1405,8 @@ class PlkWidget(QtGui.QWidget):
             pass
 
         #print("PlkWidget: key press: ", ukey, xpos, ypos)
+        self.key_count += 1
+
 
         if not from_canvas:
             if self.parent is not None:

@@ -517,54 +517,48 @@ class QtipWindow(QtGui.QMainWindow):
         @param engine:      Which pulsar timing engine to use [libstempo]
         @param testpulsar:  If True, open the test pulsar (J1744, NANOGrav)
         """
-        if engine=='pint':
-            trypint = True
+        if testpulsar:
+            # Write a temporary test pulsar file
+            parfilename = tempfile.mktemp()
+            timfilename = tempfile.mktemp()
+            parfile = open(parfilename, 'w')
+            timfile = open(timfilename, 'w')
+            parfile.write(constants.J1744_parfile)
+            timfile.write(constants.J1744_timfile)
+            parfile.close()
+            timfile.close()
         else:
-            trypint = False
+            # Obtain the directory name of the timfile and relative path
+            timfiletup = os.path.split(timfilename)
+            dirname = timfiletup[0]
+            timfilename = timfiletup[-1]
+            parfilename = os.path.relpath(parfilename, dirname)
+            savedir = os.getcwd()
 
-        engine, pclass = qp.get_engine(trypint=trypint)
+            # Change directory to the base directory of the tim-file to deal with
+            # INCLUDE statements in the tim-file
+            if dirname != '':
+                os.chdir(dirname)
 
-        if engine == 'libstempo':
-            if not testpulsar:
-                # Obtain the directory name of the timfile, and change to it
-                timfiletup = os.path.split(timfilename)
-                dirname = timfiletup[0]
-                reltimfile = timfiletup[-1]
-                relparfile = os.path.relpath(parfilename, dirname)
-                savedir = os.getcwd()
+        # Load the pulsar (and make the history available)
+        # TODO: Also set the priors, logfile, loglevel, delete_prob, and mP0
+        cell = "psr = qp.PSPulsar('"+parfilename+"', '"+timfilename+\
+                "', backend='"+engine+"')"
+        self.kernel.shell.run_cell(cell)
+        cell = "history = []"
+        self.kernel.shell.run_cell(cell)
+        psr = self.kernel.shell.ns_table['user_local']['psr']
+        history = self.kernel.shell.ns_table['user_local']['history']
+        #psr = qp.PSPulsar(parfilename, timfilename, backend=engine)
 
-                # Change directory to the base directory of the tim-file to deal with
-                # INCLUDE statements in the tim-file
-                if dirname != '':
-                    os.chdir(dirname)
-
-                # Load the pulsar
-                cell = "psr = qp."+pclass+"('"+relparfile+"', '"+reltimfile+"')"
-                self.kernel.shell.run_cell(cell)
-                psr = self.kernel.shell.ns_table['user_local']['psr']
-
-                # Change directory back to where we were
-                if dirname != '':
-                    os.chdir(savedir)
-            else:
-                cell = "psr = qp."+pclass+"(testpulsar=True)"
-                self.kernel.shell.run_cell(cell)
-                psr = self.kernel.shell.ns_table['user_local']['psr']
-        elif engine == 'pint':
-            if not testpulsar:
-                print("REMOVE THIS LINE: qtip.py 553-554")
-                psr = qp.PPulsar(parfilename, timfilename)
-                cell = "psr = qp."+pclass+"('"+parfilename+"', '"+timfilename+"')"
-            else:
-                cell = "psr = qp."+pclass+"(testpulsar=True)"
-            self.kernel.shell.run_cell(cell)
-            psr = self.kernel.shell.ns_table['user_local']['psr']
-        else:
-            print("Engine = ", engine)
-            raise NotImplemented("Only works with PINT/libstempo")
+        if testpulsar:
+            os.remove(parfilename)
+            os.remove(timfilename)
+        elif dirname != '':
+            os.chdir(savedir)
 
         # Update the plk widget
-        self.plkWidget.setPulsar(psr)
+        self.plkWidget.setPulsar(psr, history)
 
         # Communicating with the kernel goes as follows
         # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
