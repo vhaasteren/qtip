@@ -546,11 +546,11 @@ class PlkWidget(QtGui.QWidget):
 
     def init_user_interface(self):
         """Initialize the user interface (zoom, deletions)"""
+        # NOTE: Zoom is a general zooming mask. A zoom in one view, can be a
+        #       random selection in another.
         if self.psr is None:
-            self.mask_delete = None
             self.mask_zoom = None
         else:
-            self.mask_delete = np.zeros(self.psr.nobs, dtype=np.bool)
             self.mask_zoom = np.ones(self.psr.nobs, dtype=np.bool)
 
         self.show_delete = False        # Whether we show deleted points
@@ -675,9 +675,6 @@ class PlkWidget(QtGui.QWidget):
         # Add the solution
         self.history.append(newcand)
         self.h_ind += 1
-
-        # Delete the observation from plotting
-        self.mask_delete[ind] = True
 
     def merge_patches(self, lower, higher):
         """Merge coherence patches, based on these indices
@@ -809,10 +806,12 @@ class PlkWidget(QtGui.QWidget):
         #self.fitboxesWidget.setVisible(self.fitboxVisible)
         #self.actionsWidget.setVisible(self.actionsVisible)
 
-    def get_plotting_mask(self):
+    def get_plotting_mask(self, cand):
         """Return a mask we use for plotting"""
+        mask_delete = np.ones(len(self.mask_zoom), dtype=np.bool)
+        mask_delete[cand.obs_inds] = False
         return self.mask_zoom.copy() if self.show_delete else \
-                np.logical_and(self.mask_zoom, np.logical_not(self.mask_delete))
+                np.logical_and(self.mask_zoom, np.logical_not(mask_delete))
 
     def get_screen_limits(self, x, y, yerr=None):
         """Return the screen limits, based on the plotting data"""
@@ -843,7 +842,7 @@ class PlkWidget(QtGui.QWidget):
             cand = self.history[self.h_ind]
 
             # Get a mask for the plotting points
-            msk = self.get_plotting_mask()
+            msk = self.get_plotting_mask(cand)
 
             # Get the IDs of the X and Y axis
             xid, yid = self.xyChoiceWidget.plotids()
@@ -866,7 +865,7 @@ class PlkWidget(QtGui.QWidget):
                 if self.pred_data is not None and \
                         xid == 'mjd' and yid == 'Residuals':
                     #self.plotPrediction(*self.pred_data)
-                    self.plotPredictionRealizations(self.pred_realizations,
+                    self.plotPredictionRealizations(yp, self.pred_realizations,
                             *self.pred_data)
 
                     self.pred_stay -= 1
@@ -951,12 +950,13 @@ class PlkWidget(QtGui.QWidget):
         rmax[rmin > 0.5*P0] = 0.5*P0
         self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.3)
 
-    def plotPredictionRealizations(self, mr, t, dt_r, dt_stdrp):
+    def plotPredictionRealizations(self, yp, mr, t, dt_r, dt_stdrp):
         P0 = 1.0 / self.psr._psr['F0'].val
         self.plkAxes.plot(t, dt_r, 'k--', linewidth=2.0)
         rmin, rmax = dt_r-dt_stdrp, dt_r+dt_stdrp
-        rmin[rmin < -0.5*P0] = -0.5*P0
-        rmax[rmin > 0.5*P0] = 0.5*P0
+        pmin, pmax = min(-0.5*P0, np.min(yp)), max(0.5*P0, np.max(yp))
+        rmin[rmin < pmin] = pmin
+        rmax[rmin > pmax] = pmax
         self.plkAxes.plot(t, rmin, 'k-', linewidth=1.2)
         self.plkAxes.plot(t, rmax, 'k-', linewidth=1.2)
         self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.1)
@@ -1025,7 +1025,7 @@ class PlkWidget(QtGui.QWidget):
             cand = self.history[self.h_ind]
 
             # Get a mask for the plotting points
-            msk = self.get_plotting_mask()
+            msk = self.get_plotting_mask(cand)
 
             # Get the IDs of the X and Y axis
             xid, yid = self.xyChoiceWidget.plotids()
@@ -1251,7 +1251,7 @@ class PlkWidget(QtGui.QWidget):
                 # Get the screen layout
                 x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
                 y, yerr, ylabel = self.psr.data_from_label(yid, cand=cand)
-                msk = self.get_plotting_mask()
+                msk = self.get_plotting_mask(cand)
                 xmin, xmax, ymin, ymax = self.get_screen_limits(x[msk],
                         y[msk], yerr[msk])
 
