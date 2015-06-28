@@ -32,7 +32,7 @@ import ephem        # pip install pyephem
 import constants
 import qtpulsar as qp
 import tempfile
-from libfitorbit import orbitpulsar
+from libfitorbit import orbitpulsar, array_to_pardict
 
 import math 
 import scipy.optimize as so
@@ -147,6 +147,7 @@ class BinaryWidget(QtGui.QWidget):
 
                     checkbox = QtGui.QCheckBox(PARAMS[index], parent=self)
                     checkbox.stateChanged.connect(self.changedParFit)
+                    checkbox.setChecked(True)
                     self.parameterbox.addWidget(checkbox, \
                             ii, offset, 1, cblength)
 
@@ -450,18 +451,29 @@ class BinaryWidget(QtGui.QWidget):
         nfix = np.sum(fitmsk)
         apars = self.bpsr.vals(which='set')
         fpars = self.bpsr.vals(which='fit')
+        keys = self.bpsr.pars(which='set')
+        pd = array_to_pardict(apars, which='BT')
+
+        for ii, key in enumerate(keys):
+            pd[key].val = apars[ii]
 
         # Create a function for the residuals
         def resids(pars, bpsr, allpars, mask):
             allpars[mask] = pars
-            return bpsr.orbitResiduals(parameters=allpars, weight=True)
+            for ii, key in enumerate(keys):
+                pd[key].val = allpars[ii]
+            res =  bpsr.orbitResiduals(pardict=pd, weight=True, model='BT')
+            return res
 
         # If there are parameters to fit, do a least-squares minimization
         if np.sum(fitmsk) > 0:
             # Perform the least-squares fit
-            plsq = so.leastsq(resids, np.float64(fpars), args=(self.bpsr, apars, fitmsk))
+            plsq = so.leastsq(resids, np.float64(fpars),
+                    args=(self.bpsr, apars, fitmsk), full_output=True)
 
-            print("cov: ", plsq[1])
+            #print("key:", keys)
+            #print("par:", plsq[0])
+            #print("err:", np.sqrt(np.diag(plsq[1])))
 
             # Place the new paramerers back in the boxes
             apars[fitmsk] = plsq[0]
@@ -533,7 +545,7 @@ class BinaryWidget(QtGui.QWidget):
         pdeo, pdi = {}, {}
 
         # Estimate the roughness
-        pb, rg = self.bpsr.roughnessPlot()
+        pb, rg = self.bpsr.roughnessPlot(pbmin=1.0, pbmax=20.0)
 
         # Roughness
         pdr['scatter'] = (np.log10(pb), np.log10(rg))

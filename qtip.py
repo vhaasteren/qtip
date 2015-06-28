@@ -542,14 +542,23 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Load the pulsar (and make the history available)
         # TODO: Also set the priors, logfile, loglevel, delete_prob, and mP0
-        cell = "psr = qp.PSPulsar('"+parfilename+"', '"+timfilename+\
+        cell = "pspsr = qp.PSPulsar('"+parfilename+"', '"+timfilename+\
                 "', backend='"+engine+"')"
+        self.kernel.shell.run_cell(cell)
+        cell = "psr = pspsr._psr"
         self.kernel.shell.run_cell(cell)
         cell = "history = []"
         self.kernel.shell.run_cell(cell)
-        psr = self.kernel.shell.ns_table['user_local']['psr']
-        history = self.kernel.shell.ns_table['user_local']['history']
-        #psr = qp.PSPulsar(parfilename, timfilename, backend=engine)
+        if engine == "pint":
+            cell = "model = psr.model ; toas = psr.t"
+            self.kernel.shell.run_cell(cell)
+
+        try:
+            pspsr = self.kernel.shell.ns_table['user_local']['pspsr']
+            history = self.kernel.shell.ns_table['user_local']['history']
+        except KeyError as err:
+            pspsr = qp.PSPulsar(parfilename, timfilename, backend=engine)
+            history = []
 
         if testpulsar:
             os.remove(parfilename)
@@ -558,7 +567,7 @@ class QtipWindow(QtGui.QMainWindow):
             os.chdir(savedir)
 
         # Update the plk widget
-        self.plkWidget.setPulsar(psr, history)
+        self.plkWidget.setPulsar(pspsr, history)
 
         # Communicating with the kernel goes as follows
         # self.kernel.shell.push({'foo': 43, 'print_process_id': print_process_id}, interactive=True)
@@ -580,13 +589,15 @@ class QtipWindow(QtGui.QMainWindow):
             tperfile.write(constants.J1903PER)
             #tperfile.write(constants.J1756PER)
             tperfile.close()
+            ms = True
         else:
             tperfilename = perfilename
+            ms = False
 
         # Load the per-file
         cell = "bpsr = lo.orbitpulsar()"
         self.kernel.shell.run_cell(cell)
-        cell = "bpsr.readPerFile('" + tperfilename +"')"
+        cell = "bpsr.readPerFile('" + tperfilename +"', ms=" + str(ms) + ")"
         self.kernel.shell.run_cell(cell)
 
         if testpulsar or perfilename is None:

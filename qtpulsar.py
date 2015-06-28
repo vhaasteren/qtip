@@ -96,7 +96,7 @@ class PSPulsar(psp.PulsarSolver):
                 logfile=logfile, loglevel=loglevel, delete_prob=delete_prob,
                 mP0=mP0, backend=backend)
         
-        self.init_prediction_psr(parfile)
+        self.init_prediction_psr(parfile, nobs=self.nobs)
 
     def init_prediction_psr(self, parfile, nobs=100):
         """Initialize a fake pulsar, just for prediction purposes
@@ -116,7 +116,7 @@ class PSPulsar(psp.PulsarSolver):
             if par[:4] == 'JUMP':
                 self.predpsr[par].val = 0.0
                 self.predpsr[par].err = 0.0
-                self.predpsr[par].set = False
+                #self.predpsr[par].set = False      # TODO: Cannot unset jumps
                 self.predpsr[par].fit = False
 
         lts.make_ideal(self.predpsr)
@@ -236,6 +236,27 @@ class PSPulsar(psp.PulsarSolver):
         # TEMPO2 code that we can use for the sidereal time etc.
 
     #--- Some extra quantities we need to be able to calculate for plotting
+    def pulsephase(self, cand=None, exclude_nonconnected=False):
+        """Return the pulse phase, possibly excluding non-connected obsns
+
+        Return the pulse phase. If exclude_nonconnected is True, then only
+        return the values for which the patches in cand contain more than one
+        toa
+
+        Note: exclude_nonconnected will/might mess up the ordering of the
+              toas
+
+        :param cand:
+            The candidate solution object
+
+        :param exclude_nonconnected:
+            If True, only return uncertainties within coherent patches with more
+            than one residual
+        """
+        F0 = self._psr['F0'].val
+        return self.residuals(cand, exclude_nonconnected) * F0
+
+    #--- Some extra quantities we need to be able to calculate for plotting
     def orbitalphase(self, cand=None, exclude_nonconnected=False):
         """Return the orbital phase, possibly excluding non-connected obsns
 
@@ -321,6 +342,13 @@ class PSPulsar(psp.PulsarSolver):
             error = self.toaerrs(cand=cand,
                     exclude_nonconnected=exclude_nonconnected)
             plotlabel = r'MJD'
+        elif label == 'pulse phase':
+            F0 = self._psr['F0'].val
+            data = self.pulsephase(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            error = F0*self.toaerrs(cand=cand,
+                    exclude_nonconnected=exclude_nonconnected)
+            plotlabel = 'Pulse Phase'
         elif label == 'orbital phase':
             data = self.orbitalphase(cand=cand,
                     exclude_nonconnected=exclude_nonconnected)

@@ -43,7 +43,7 @@ def pardict_to_array(pardict, which='BT'):
     @return x:          Array of model parameters
     """
     x = None
-    if which=='BT' or which=='BTG':
+    if which=='BT':
         x = np.zeros(10, dtype=np.float128)
         if 'P0' in pardict:
             x[0] = np.float128(pardict['P0'].val)
@@ -115,7 +115,7 @@ def array_to_pardict(parameters, which='BT'):
     @return pardict:    Parameter dictionary with parameter values
     """
     pardict = OrderedDict()
-    if which=='BT' or which=='BTG':
+    if which=='BT':
         pardict['P0'] = createOrbitPar('P0')
         pardict['P0'].val = parameters[0]
 
@@ -370,50 +370,6 @@ def BT_delay(t, PB, T0, A1, OM, ECC=0.0, EDOT=0.0, PBDOT=0.0, XDOT=0.0, \
         return sbe;                                               /* fctn(15+j) */
       return 0.0;
     """
-
-def BT_period_gregory(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
-        EDOT=0.0, PBDOT=0.0, OMDOT=0.0):
-    """
-    The 'BT' binary model for the pulse period. Model:
-    Blandford & Teukolsky (1976), ApJ, 205, 580-591
-
-    Adjusted from code by Gregory Desvignes
-    NOTE: incompatible with code below
-
-    @param P0:          The pulse period [sec]
-    @param P1:          The pulse period derivative [sec/sec]
-    @param PEPOCH:      Position EPOCH
-    @param PB:          Binary period [days]
-    @param ECC:         Eccentricity
-    @param A1:          Projected semi-major axis (lt-sec)
-    @param T0:          Time of ascending node (TASC)
-    @param OM:          Omega (longitude of periastron) [deg]
-    @param RA_RAD:      Pulsar position (right ascension) [rad]
-    @param DEC_RAD:     Pulsar position (declination) [rad]
-    @param EDOT:        Time-derivative of ECC [0.0]
-    @param PBDOT:       Time-derivative of PB [0.0]
-    @param OMDOT:       Time-derivative of OMEGA [0.0]
-    """
-    tt0 = (t-T0) * SECS_PER_DAY
-    pb = PB * SECS_PER_DAY
-    ecc = ECC + EDOT * tt0
-    omega = (OM + OMDOT*tt0/(SECS_PER_DAY*365.25)) * DEG2RAD
-    pbdot = PBDOT
-
-    if not np.all(np.logical_and(ecc >= 0.0, ecc <= 1.0)):
-        return np.inf
-
-    # Get the doppler amplitude
-    kappa = 2*np.pi*A1/(PB*SECS_PER_DAY*np.sqrt(1-ecc**2))
-
-    # Obtain the true anomaly through the eccentric anomaly
-    orbits = tt0 / pb - 0.5 * pbdot * (tt0 / pb) ** 2
-    norbits = np.array(np.floor(orbits), dtype=np.long)
-    phase = 2 * np.pi * (orbits - norbits)
-    bige = eccentric_anomaly(ecc, phase)
-    true_anom = 2*np.arctan(np.sqrt((1+ecc)/(1-ecc))*np.tan(bige/2))
-
-    return 1000*(P0+P1*(t-PEPOCH)*SECS_PER_DAY) * (1+kappa*np.cos(true_anom+omega) )
 
 
 def BT_period(t, P0, P1, PEPOCH, PB, ECC, A1, T0, OM, RA_RAD, DEC_RAD, \
@@ -775,6 +731,7 @@ class orbitpulsar(object):
         Read a period-file, in the PRESO (.bestprof) format
 
         @param perfilename: PRESO .bestprof file
+        @param ms:          Whether or not the periods are in ms
         """
 
         if perfilename is not None and os.path.isfile(perfilename):
@@ -791,6 +748,7 @@ class orbitpulsar(object):
 
             if ms:
                 self.periods *= 0.001
+                self.periodserrs *= 0.001
         else:
             self.perfilename = None
 
@@ -938,7 +896,7 @@ class orbitpulsar(object):
             parlist=None, model=None):
         """
         Return the model for the pulse period, given the current binary model
-        and parameters
+        and parameters (in sec)
 
         @param mjds:        If not None, use these mjds, instead of the
                             intrinsic ones
@@ -972,10 +930,8 @@ class orbitpulsar(object):
         bmarr = pardict_to_array(pardict, which=model)
         pmodel = np.zeros(len(self.mjds))
 
-        if model == 'BT':
+        if model in ['BT']:
             pmodel = BT_period(mj, *bmarr)
-        elif model == 'BTG':
-            pmodel = BT_period_gregory(mj, *bmarr)
         elif model == 'RED':
             pmodel = RED_period(mj, *bmarr)
         elif model  == 'DD':
@@ -1150,6 +1106,7 @@ class orbitpulsar(object):
 
         @return: pb, roughness
         """
+        Tmax = np.max(self.mjds) - np.min(self.mjds)
         if pbmax is None:
             Tmax = np.max(self.mjds) - np.min(self.mjds)
             pbmax = 5*Tmax

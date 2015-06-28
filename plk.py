@@ -160,8 +160,8 @@ import qtpulsar as qp
 import pysolvepulsar as psp
 
 # All the types of quantities we will be able to plot in the plk widget
-plot_labels = ['Residuals', 'mjd', 'year', 'orbital phase', 'serial', \
-            'day of year', 'frequency', 'TOA error', 'elevation', \
+plot_labels = ['Residuals', 'mjd', 'year', 'pulse phase', 'orbital phase', \
+               'serial', 'day of year', 'frequency', 'TOA error', 'elevation', \
             'rounded MJD', 'sidereal time', 'hour angle', 'para. angle']
 nofitboxpars = ['START', 'FINISH', 'POSEPOCH', 'PEPOCH', 'DMEPOCH', \
             'EPHVER', 'TZRMJD', 'TZRFRQ', 'TRES']
@@ -483,7 +483,7 @@ class PlkWidget(QtGui.QWidget):
     def __init__(self, parent=None, **kwargs):
         super(PlkWidget, self).__init__(parent, **kwargs)
 
-        self.psr = None         # PulsarSolver object
+        self.pspsr = None         # PulsarSolver object
         self.history = []       # History of previous solution candidates
         self.h_ind = None       # History index
         self.parent = parent
@@ -548,10 +548,10 @@ class PlkWidget(QtGui.QWidget):
         """Initialize the user interface (zoom, deletions)"""
         # NOTE: Zoom is a general zooming mask. A zoom in one view, can be a
         #       random selection in another.
-        if self.psr is None:
+        if self.pspsr is None:
             self.mask_zoom = None
         else:
-            self.mask_zoom = np.ones(self.psr.nobs, dtype=np.bool)
+            self.mask_zoom = np.ones(self.pspsr.nobs, dtype=np.bool)
 
         self.show_delete = False        # Whether we show deleted points
         self.mergepatch_lower = None    # Which obs coordinate we are merging
@@ -607,17 +607,17 @@ class PlkWidget(QtGui.QWidget):
         self.plkCanvas.draw()
         self.setColorScheme(False)
 
-    def setPulsar(self, psr, history):
+    def setPulsar(self, pspsr, history):
         """
         We've got a new pulsar!
         """
         # Set the pysolvepulsar object
-        self.psr = psr
+        self.pspsr = pspsr
         self.history = history
 
         # And set an initial candidate solution
         cand = psp.CandidateSolution()
-        cand.set_solution(psr.get_prior_values(), *psr.get_start_solution())
+        cand.set_solution(pspsr.get_prior_values(), *pspsr.get_start_solution())
         self.history.append(cand)
         self.h_ind = 0
 
@@ -639,7 +639,7 @@ class PlkWidget(QtGui.QWidget):
 
     def get_new_parfilename(self):
         """Return a new parfile name"""
-        return self.psr.name + time.strftime('%Y-%m-%d-%H.%M.%S.par')
+        return self.pspsr.name + time.strftime('%Y-%m-%d-%H.%M.%S.par')
 
     def fitboxChecked(self, parchanged, newstate):
         """
@@ -655,9 +655,9 @@ class PlkWidget(QtGui.QWidget):
         """
         We need to re-do the fit for this pulsar
         """
-        if not self.psr is None:
+        if not self.pspsr is None:
             self.history = self.history[:self.h_ind+1]
-            newcand, loglik = self.psr.fit_constrained_iterative(
+            newcand, loglik = self.pspsr.fit_constrained_iterative(
                     self.history[self.h_ind])
             self.history.append(newcand)
             self.h_ind += 1
@@ -684,7 +684,7 @@ class PlkWidget(QtGui.QWidget):
         # Obtain the data, on this scale
         cand = self.history[self.h_ind]
         xid, yid = self.xyChoiceWidget.plotids()
-        x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+        x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
 
         # Find all observations between 'lower' and 'higher'
         inds = np.where(np.logical_and(x >= x[lower], x <= x[higher]))[0]
@@ -710,7 +710,7 @@ class PlkWidget(QtGui.QWidget):
         upinds = np.unique(pinds)
 
         # We need the absolute pulse numbers, as determine
-        pulse_numbers = self.psr.pulsenumbers(newcand)
+        pulse_numbers = self.pspsr.pulsenumbers(newcand)
 
         # Merge these patches
         for ii, upind in enumerate(upinds[1:]):
@@ -837,7 +837,7 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.clear()
         self.plkAxes.grid(True)
 
-        if self.psr is not None:
+        if self.pspsr is not None:
             # The candidate solution we are plotting now
             cand = self.history[self.h_ind]
 
@@ -848,8 +848,8 @@ class PlkWidget(QtGui.QWidget):
             xid, yid = self.xyChoiceWidget.plotids()
 
             # Retrieve the data
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
-            y, yerr, ylabel = self.psr.data_from_label(yid, cand=cand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
+            y, yerr, ylabel = self.pspsr.data_from_label(yid, cand=cand)
 
             if x is not None and y is not None and np.sum(msk) > 0:
                 xp = x[msk]
@@ -860,13 +860,16 @@ class PlkWidget(QtGui.QWidget):
                 else:
                     yerrp = None
 
-                self.plotResiduals(xp, yp, yerrp, xlabel, ylabel, self.psr.name)
+                self.plotResiduals(xp, yp, yerrp, xlabel, ylabel, self.pspsr.name)
                 self.plotCoherentPatches(x, msk, yp, yerrp, cand)
                 if self.pred_data is not None and \
-                        xid == 'mjd' and yid == 'Residuals':
+                        xid == 'mjd' and yid in ['Residuals', 'pulse phase']:
                     #self.plotPrediction(*self.pred_data)
-                    self.plotPredictionRealizations(yp, self.pred_realizations,
-                            *self.pred_data)
+                    F0 = self.pspsr._psr['F0'].val
+                    bound, mult = (1.0/F0, 1.0) if yid == 'Residuals' else (1.0, F0)
+                           
+                    self.plotPredictionRealizations(yp*mult, self.pred_realizations,
+                            bound, *self.pred_data)
 
                     self.pred_stay -= 1
                     if self.pred_stay == 0:
@@ -943,18 +946,18 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.set_title(title, y=1.03)
 
     def plotPrediction(self, t, dt_r, dt_stdrp):
-        P0 = 1.0 / self.psr._psr['F0'].val
+        P0 = 1.0 / self.pspsr._psr['F0'].val
         self.plkAxes.plot(t, dt_r, 'k--', linewidth=2.0)
         rmin, rmax = dt_r-dt_stdrp, dt_r+dt_stdrp
         rmin[rmin < -0.5*P0] = -0.5*P0
         rmax[rmin > 0.5*P0] = 0.5*P0
         self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.3)
 
-    def plotPredictionRealizations(self, yp, mr, t, dt_r, dt_stdrp):
-        P0 = 1.0 / self.psr._psr['F0'].val
+    def plotPredictionRealizations(self, yp, mr, bound, t, dt_r, dt_stdrp):
+        #P0 = 1.0 / self.pspsr._psr['F0'].val
         self.plkAxes.plot(t, dt_r, 'k--', linewidth=2.0)
         rmin, rmax = dt_r-dt_stdrp, dt_r+dt_stdrp
-        pmin, pmax = min(-0.5*P0, np.min(yp)), max(0.5*P0, np.max(yp))
+        pmin, pmax = min(-0.5*bound, np.min(yp)), max(0.5*bound, np.max(yp))
         rmin[rmin < pmin] = pmin
         rmax[rmin > pmax] = pmax
         self.plkAxes.plot(t, rmin, 'k-', linewidth=1.2)
@@ -962,15 +965,15 @@ class PlkWidget(QtGui.QWidget):
         self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.1)
         for ii in range(mr.shape[1]):
             r = mr[:,ii]
-            r[r < -0.5*P0] = -0.5*P0
-            r[r > 0.5*P0] = 0.5*P0
-            self.plkAxes.plot(t, dt_r+r, c='darkred', linestyle='-',
+            r[r < -0.5*bound] = -0.5*bound
+            r[r > 0.5*bound] = 0.5*bound
+            self.plkAxes.plot(t, (dt_r+r), c='darkred', linestyle='-',
                     linewidth=0.5, alpha=0.3)
 
         #self.plkAxes.plot(t, dt_r, 'k--', linewidth=2.0)
         #rmin, rmax = dt_r-dt_stdrp, dt_r+dt_stdrp
-        #rmin[rmin < -0.5*P0] = -0.5*P0
-        #rmax[rmin > 0.5*P0] = 0.5*P0
+        #rmin[rmin < -0.5*bound] = -0.5*bound
+        #rmax[rmin > 0.5*bound] = 0.5*bound
         #self.plkAxes.fill_between(t, rmin, rmax, facecolor='k', alpha=0.3)
 
     def plotPhaseJumps_deprecated(self, phasejumps):
@@ -1020,7 +1023,7 @@ class PlkWidget(QtGui.QWidget):
         """
         ind = None
 
-        if self.psr is not None:
+        if self.pspsr is not None:
             # The candidate solution we are plotting now
             cand = self.history[self.h_ind]
 
@@ -1031,8 +1034,8 @@ class PlkWidget(QtGui.QWidget):
             xid, yid = self.xyChoiceWidget.plotids()
 
             # Retrieve the data
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
-            y, yerr, ylabel = self.psr.data_from_label(yid, cand=cand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
+            y, yerr, ylabel = self.pspsr.data_from_label(yid, cand=cand)
 
             if np.sum(msk) > 0 and x is not None and y is not None:
                 # Obtain the limits
@@ -1152,7 +1155,7 @@ class PlkWidget(QtGui.QWidget):
             # Get the x-value data
             cand = self.history[self.h_ind]
             xid, yid = self.xyChoiceWidget.plotids()
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
 
             # Get the index of the start-point
             ind = self.coord2point(xpos, ypos, which='x', mode='higher')
@@ -1165,7 +1168,7 @@ class PlkWidget(QtGui.QWidget):
             # Get the x-value data
             cand = self.history[self.h_ind]
             xid, yid = self.xyChoiceWidget.plotids()
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
 
             # Get the index of the start-point
             ind = self.coord2point(xpos, ypos, which='x', mode='lower')
@@ -1189,7 +1192,7 @@ class PlkWidget(QtGui.QWidget):
             # Get the x-value data
             cand = self.history[self.h_ind]
             xid, yid = self.xyChoiceWidget.plotids()
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
 
             # Get the index of the start-point
             ind = self.coord2point(xpos, ypos, which='x', mode='higher')
@@ -1209,7 +1212,7 @@ class PlkWidget(QtGui.QWidget):
             # Get the x-value data
             cand = self.history[self.h_ind]
             xid, yid = self.xyChoiceWidget.plotids()
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
 
             # Get the index of the start-point
             ind = self.coord2point(xpos, ypos, which='x', mode='lower')
@@ -1231,7 +1234,7 @@ class PlkWidget(QtGui.QWidget):
             newcand = self.history[self.h_ind]
             ind = self.coord2point(xpos, ypos, which='x', mode='higher')
             xid, yid = self.xyChoiceWidget.plotids()
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=newcand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=newcand)
             pind = newcand.get_patch_from_obsind(ind)
             if pind is not None:
                 patch = newcand._patches[pind]
@@ -1247,10 +1250,10 @@ class PlkWidget(QtGui.QWidget):
             # First obtain the plotting ranges etc.
             cand = self.history[self.h_ind]
             xid, yid = self.xyChoiceWidget.plotids()
-            if xid in ['mjd'] and yid in ['Residuals']:
+            if xid in ['mjd'] and yid in ['Residuals', 'pulse phase']:
                 # Get the screen layout
-                x, xerr, xlabel = self.psr.data_from_label(xid, cand=cand)
-                y, yerr, ylabel = self.psr.data_from_label(yid, cand=cand)
+                x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=cand)
+                y, yerr, ylabel = self.pspsr.data_from_label(yid, cand=cand)
                 msk = self.get_plotting_mask(cand)
                 xmin, xmax, ymin, ymax = self.get_screen_limits(x[msk],
                         y[msk], yerr[msk])
@@ -1260,15 +1263,18 @@ class PlkWidget(QtGui.QWidget):
                 pind = cand.get_patch_from_obsind(ind)
                 if pind is not None:
                     # Perform the linear least-squares extrapolation
-                    dd = self.psr.perform_linear_least_squares_fit_old(cand,
+                    dd = self.pspsr.perform_linear_least_squares_fit_old(cand,
                             fitpatch=pind)
 
-                    npobs = self.psr.predpsr_nobs
+                    mult = 1.0 if yid == 'Residuals' else \
+                           self.pspsr._psr['F0'].val
+
+                    npobs = self.pspsr.predpsr_nobs
                     obstimes = np.linspace(xmin, xmax, npobs)
-                    dt_r, dt_stdrp = self.psr.get_mock_prediction(obstimes, dd)
-                    self.pred_data = (obstimes, dt_r, dt_stdrp)
-                    self.pred_realizations = self.psr.get_mock_realizations(\
-                            obstimes, dd)[1]
+                    dt_r, dt_stdrp = self.pspsr.get_mock_prediction(obstimes, dd)
+                    self.pred_data = (obstimes, dt_r*mult, dt_stdrp*mult)
+                    self.pred_realizations = self.pspsr.get_mock_realizations(\
+                            obstimes, dd)[1] * mult
                     self.pred_stay = 2
 
             self.updatePlot()
@@ -1281,7 +1287,7 @@ class PlkWidget(QtGui.QWidget):
             #newcand = self.history[self.h_ind]
             ind = self.coord2point(xpos, ypos, which='x', mode='higher')
             xid, yid = self.xyChoiceWidget.plotids()
-            x, xerr, xlabel = self.psr.data_from_label(xid, cand=newcand)
+            x, xerr, xlabel = self.pspsr.data_from_label(xid, cand=newcand)
             pind = newcand.get_patch_from_obsind(ind)
             if pind is not None:
                 patch = newcand._patches[pind]
@@ -1311,8 +1317,8 @@ class PlkWidget(QtGui.QWidget):
             parfilename = self.get_new_parfilename()
             cand = self.history[self.h_ind]
 
-            dd = self.psr.perform_linear_least_squares_fit_old(cand)
-            self.psr.savepar(parfilename, dd)
+            dd = self.pspsr.perform_linear_least_squares_fit_old(cand)
+            self.pspsr.savepar(parfilename, dd)
         elif ukey == ord('<'):
             """
             # Add a data point to the view on the left
