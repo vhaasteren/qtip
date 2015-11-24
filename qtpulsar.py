@@ -62,7 +62,7 @@ except ImportError:
 try:
     import pint.models as tm
     from pint.phase import Phase
-    import pint.models.dd as dd
+    #import pint.models.dd as dd
     from pint import toa
     print("PINT available")
     have_pint = True
