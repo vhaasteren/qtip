@@ -139,7 +139,8 @@ from __future__ import division
 import os, sys
 
 # Importing all the stuff for the IPython console widget
-from PyQt4 import QtGui, QtCore
+#from PyQt4 import QtGui, QtCore
+from qtconsole.qt import QtCore, QtGui
 
 # Importing all the stuff for the matplotlib widget
 import matplotlib

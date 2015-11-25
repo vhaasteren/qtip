@@ -12,11 +12,9 @@ from __future__ import division
 import os, sys
 
 # Importing all the stuff for the IPython console widget
-from IPython.qt.console.rich_ipython_widget import RichIPythonWidget
-from IPython.qt.inprocess import QtInProcessKernelManager
-from IPython.lib import guisupport
-
-from PyQt4 import QtGui, QtCore
+from qtconsole.jupyter_widget import JupyterWidget
+from qtconsole.inprocess import QtInProcessKernelManager
+from qtconsole.qt import QtCore, QtGui
 
 # Advanced command-line option parsing
 import optparse
@@ -35,8 +33,8 @@ from plk import PlkWidget
 from binary import BinaryWidget
 
 # The startup banner
-QtipBanner = """Qtip python console, by Rutger van Haasteren
-Console powered by IPython
+QtipBanner_old = """Qtip python console, by Rutger van Haasteren
+Console powered by Jupyter
 Type "copyright", "credits" or "license" for more information.
 
 ?         -> Introduction and overview of IPython's features.
@@ -46,6 +44,19 @@ object?   -> Details about 'object', use 'object??' for extra details.
 %guiref   -> A brief reference about the graphical user interface.
 
 import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp
+"""
+
+QtipBanner = """
+      +----------------------------------------------+
+      |              PINT                            |
+      |              ====              ,~~~~.        |
+      |      Modern Pulsar Timing      i====i_       |
+      |                                |cccc|_)      |
+      |     Brought to you by the      |cccc|        |
+      |     NANOGrav collaboration     `-==-'        |
+      |                                              |
+      +----------------------------------------------+
+
 """
 
 
@@ -59,7 +70,7 @@ class QtipWindow(QtGui.QMainWindow):
     libstempo tab, as part of the Piccard suite
     """
     
-    def __init__(self, parent=None, engine='libstempo', \
+    def __init__(self, parent=None, engine='pint', \
             parfile=None, timfile=None, perfile=None, **kwargs):
         super(QtipWindow, self).__init__(parent)
         self.setWindowTitle('QtIpython interface to PINT/libstempo')
@@ -238,10 +249,15 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Create the IPython widget
         """
-        self.consoleWidget = RichIPythonWidget()
+        #self.consoleWidget = RichIPythonWidget()
+        self.consoleWidget = JupyterWidget()
         #self.consoleWidget.setMinimumSize(600, 550)
+
+        # Why is there another banner showing as well?
         self.consoleWidget.banner = QtipBanner
         self.consoleWidget.kernel_manager = self.kernelManager
+
+        # The client ...
         self.consoleWidget.kernel_client = self.kernelClient
         self.consoleWidget.exit_requested.connect(self.toggleIPython)
         self.consoleWidget.set_default_style(colors='linux')
@@ -349,8 +365,6 @@ class QtipWindow(QtGui.QMainWindow):
             self.openSomethingWidget.show()
         elif self.whichWidget.lower() == 'plk':
             self.plkWidget.show()
-        elif self.whichWidget.lower() == 'piccard':
-            pass
         elif self.whichWidget.lower() == 'binary':
             self.binaryWidget.show()
 
@@ -425,7 +439,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.openBinaryPulsar(parfilename, perfilename, testpulsar=testpulsar)
 
     def requestOpenPlk(self, parfilename=None, timfilename=None, \
-            testpulsar=False, engine='libstempo'):
+            testpulsar=False, engine='pint'):
         """
         Request to open a file in the plk widget
 
@@ -478,7 +492,7 @@ class QtipWindow(QtGui.QMainWindow):
         # TODO: obtain the engine from elsewhere
         #engine='libstempo'
 
-        # Ask the user for a par and tim file, and open these with libstempo
+        # Ask the user for a par and tim file, and open these with libstempo/pint
         parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
         timfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open tim-file', '~/')
 
@@ -489,7 +503,7 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Open a par-file and a per/bestprof file
         """
-        # Ask the user for a par and tim file, and open these with libstempo
+        # Ask the user for a par and tim file, and open these with libstempo/pint
         parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
         perfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open per/bestprof-file', '~/')
 
@@ -501,20 +515,20 @@ class QtipWindow(QtGui.QMainWindow):
         """
         Open a per/bestprof file
         """
-        # Ask the user for a par and tim file, and open these with libstempo
+        # Ask the user for a par and tim file, and open these with libstempo/pint
         perfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open per/bestprof-file', '~/')
 
         # Load the pulsar
         self.openBinaryPulsar(parfilename=None, perfilename=perfilename)
 
-    def openPlkPulsar(self, parfilename, timfilename, engine='libstempo', \
+    def openPlkPulsar(self, parfilename, timfilename, engine='pint', \
             testpulsar=False):
         """
         Open a pulsar, given a parfile and a timfile
 
         @param parfilename: The name of the parfile to open
         @param timfilename: The name fo the timfile to open
-        @param engine:      Which pulsar timing engine to use [libstempo]
+        @param engine:      Which pulsar timing engine to use [pint]
         @param testpulsar:  If True, open the test pulsar (J1744, NANOGrav)
         """
         if engine=='pint':
@@ -552,10 +566,10 @@ class QtipWindow(QtGui.QMainWindow):
                 psr = self.kernel.shell.ns_table['user_local']['psr']
         elif engine == 'pint':
             if not testpulsar:
-                print("REMOVE THIS LINE: qtip.py 553-554")
                 psr = qp.PPulsar(parfilename, timfilename)
                 cell = "psr = qp."+pclass+"('"+parfilename+"', '"+timfilename+"')"
             else:
+                psr = qp.PPulsar(testpulsar=True)
                 cell = "psr = qp."+pclass+"(testpulsar=True)"
             self.kernel.shell.run_cell(cell)
             psr = self.kernel.shell.ns_table['user_local']['psr']
@@ -683,8 +697,8 @@ def main():
             default=(None, None), help="Provide a period file (per)")
 
     parser.add_option('-e', '--engine', action='store', type='string', nargs=1, \
-            default='libstempo', \
-            help="Pulsar timing engine: libstempo/pint/piccard")
+            default='pint', \
+            help="Pulsar timing engine: libstempo/pint")
 
     (options, args) = parser.parse_args()
 

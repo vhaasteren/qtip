@@ -13,19 +13,6 @@ from __future__ import print_function
 from __future__ import division
 import os, sys
 
-# Importing all the stuff for the IPython console widget
-from IPython.qt.console.rich_ipython_widget import RichIPythonWidget
-from IPython.qt.inprocess import QtInProcessKernelManager
-from IPython.lib import guisupport
-
-from PyQt4 import QtGui, QtCore
-
-# Importing all the stuff for the matplotlib widget
-import matplotlib
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
-from matplotlib.figure import Figure
-
 # Numpy etc.
 import numpy as np
 import time
@@ -40,16 +27,6 @@ try:
 except ImportError:
     from ordereddict import OrderedDict
 
-# Import libstempo and Piccard
-try:
-    import piccard as pic
-    print("Piccard available")
-    have_piccard = True
-except ImportError:
-    pic = None
-    print("Piccard not available")
-    have_piccard = False
-
 try:
     import libstempo as lt
     print("Libstempo available")
@@ -60,14 +37,13 @@ except ImportError:
     have_libstempo = False
 
 try:
-    import pint.models as tm
+    import pint.models as pm
     from pint.phase import Phase
-    #import pint.models.dd as dd
     from pint import toa
     print("PINT available")
     have_pint = True
 except ImportError:
-    tm = None
+    pm = None
     Phase = None
     toa = None
     print("PINT not available")
@@ -800,8 +776,8 @@ class PPulsar(BasePulsar):
 
         # Create a timing-model
         self._interface = "pint"
-        m = tm.StandardTimingModel()
-        #m = tm.DDTimingModel()
+        #m = pm.StandardTimingModel()
+        #m = pm.DDTimingModel()
         
         if testpulsar:
             # Write a test-pulsar, and open that for testing
@@ -820,7 +796,8 @@ class PPulsar(BasePulsar):
             raise ValueError("No valid pulsar to load")
 
         # We have a par/tim file. Read them in!
-        m.read_parfile(parfilename)
+        m = pm.get_model(parfilename)
+        #m.read_parfile(parfilename)
 
         print("model.as_parfile():")
         print(m.as_parfile())
@@ -830,12 +807,12 @@ class PPulsar(BasePulsar):
         except AttributeError:
             planet_ephems = False
 
-        t0 = time.time()
+        #t0 = time.time()
         t = toa.get_TOAs(timfilename)
-        time_toa = time.time() - t0
+        #time_toa = time.time() - t0
         t.print_summary()
 
-        sys.stderr.write("Read/corrected TOAs in %.3f sec\n" % time_toa)
+        #sys.stderr.write("Read/corrected TOAs in %.3f sec\n" % time_toa)
 
         self._mjds = t.get_mjds()
         #d_tdbs = np.array([x.tdb.delta_tdb_tt for x in t.table['mjd']])
@@ -844,8 +821,8 @@ class PPulsar(BasePulsar):
         #ss_roemer = np.zeros_like(self._mjds)
         #ss_shapiro = np.zeros_like(self._mjds)
 
-        sys.stderr.write("Computing residuals...\n")
-        t0 = time.time()
+        #sys.stderr.write("Computing residuals...\n")
+        #t0 = time.time()
         phases = m.phase(t.table)
         resids = phases.frac
 
@@ -855,8 +832,8 @@ class PPulsar(BasePulsar):
         #    ss_roemer[ii] = m.solar_system_geometric_delay(tt)
         #    ss_shapiro[ii] = m.solar_system_shapiro_delay(tt)
 
-        time_phase = time.time() - t0
-        sys.stderr.write("Computed phases in %.3f sec\n" % time_phase)
+        #time_phase = time.time() - t0
+        #sys.stderr.write("Computed phases in %.3f sec\n" % time_phase)
 
         # resids in (approximate) us:
         self._resids_us = resids / float(m.F0.value) * 1e6
