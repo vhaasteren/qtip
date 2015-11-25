@@ -7,3 +7,4 @@ qtip.egg-info
 *.txt
 .DS_Store
 solvingpulsars
+testdata
