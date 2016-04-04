@@ -11,8 +11,8 @@ from __future__ import print_function
 from __future__ import division
 import os, sys
 
-# Importing all the stuff for the IPython console widget
-from qtconsole.jupyter_widget import JupyterWidget
+# Importing all the stuff for the Jupyter console widget
+from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.qt import QtCore, QtGui
 
@@ -55,17 +55,17 @@ class QtipWindow(QtGui.QMainWindow):
         """
 
         super(QtipWindow, self).__init__(parent)
-        self.setWindowTitle('QtIPython interface for pulsar timing')
+        self.setWindowTitle('Jupyter interface for pulsar timing')
 
         # Initialise basic gui elements
         self.initUI()
 
-        # Start the embedded IPython kernel
-        self.createIPythonKernel()
+        # Start the embedded Jupyter kernel
+        self.createJupyerKernel()
 
         # Create the display widgets
         self.createPlkWidget()
-        self.createIPythonWidget()
+        self.createJupyterWidget()
         self.createOpenSomethingWidget()
 
         # Position the widgets
@@ -73,7 +73,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Initialize the main widget (the plk emulator)
         self.setQtipLayout(whichWidget='plk',
-                showIPython=False, firsttime=True)
+                showJupyter=False, firsttime=True)
 
         # The preferred engine to use (PINT)
         self.pref_engine = engine
@@ -129,11 +129,11 @@ class QtipWindow(QtGui.QMainWindow):
         self.togglePlkAction.setStatusTip('Toggle plk widget')
         self.togglePlkAction.triggered.connect(self.togglePlk)
 
-        # Menu item: toggle the IPython window
-        self.toggleIPythonAction = QtGui.QAction('&IPython', self)        
-        self.toggleIPythonAction.setShortcut('Ctrl+I')
-        self.toggleIPythonAction.setStatusTip('Toggle IPython')
-        self.toggleIPythonAction.triggered.connect(self.toggleIPython)
+        # Menu item: toggle the Jupyter window
+        self.toggleJupyterAction = QtGui.QAction('&Jupyter', self)        
+        self.toggleJupyterAction.setShortcut('Ctrl+J')
+        self.toggleJupyterAction.setStatusTip('Toggle Jupyter')
+        self.toggleJupyterAction.triggered.connect(self.toggleJupyter)
 
         # Menu item: about Qtip
         self.aboutAction = QtGui.QAction('&About', self)        
@@ -173,18 +173,18 @@ class QtipWindow(QtGui.QMainWindow):
         self.fileMenu.addAction(self.exitAction)
         self.viewMenu = self.menubar.addMenu('&View')
         self.viewMenu.addAction(self.togglePlkAction)
-        self.viewMenu.addAction(self.toggleIPythonAction)
+        self.viewMenu.addAction(self.toggleJupyterAction)
         self.helpMenu = self.menubar.addMenu('&Help')
         self.helpMenu.addAction(self.aboutAction)
 
         # What is the status quo of the user interface?
-        self.showIPython = False
+        self.showJupyter = False
         self.whichWidget = 'None'
-        self.prevShowIPython = None
+        self.prevShowJupyter = None
         self.prevWhichWidget = 'None'
 
-    def createIPythonKernel(self):
-        """Create and start the embedded IPython Kernel"""
+    def createJupyterKernel(self):
+        """Create and start the embedded Jupyter Kernel"""
 
         # Create an in-process kernel
         self.kernelManager = QtInProcessKernelManager()
@@ -200,7 +200,7 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Load the necessary packages in the embedded kernel
         # TODO: show this line in a cell of it's own
-        cell = "import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp, libfitorbit as lo"
+        cell = "import numpy as np, matplotlib.pyplot as plt, qtpulsar as qp"
         self.kernel.shell.run_cell(cell, store_history=False)
 
         # Set the in-kernel matplotlib color scheme to black.
@@ -208,10 +208,10 @@ class QtipWindow(QtGui.QMainWindow):
         self.kernel.shell.run_cell(constants.matplotlib_rc_cell_black,
                 store_history=False)
 
-    def createIPythonWidget(self):
-        """Create the IPython/Jupyter widget"""
+    def createJupyterWidget(self):
+        """Create the Jupyter widget"""
 
-        self.consoleWidget = JupyterWidget()
+        self.consoleWidget = RichJupyterWidget()
         #self.consoleWidget.setMinimumSize(600, 550)
 
         # Show the banner
@@ -220,15 +220,15 @@ class QtipWindow(QtGui.QMainWindow):
 
         # Couple the client
         self.consoleWidget.kernel_client = self.kernelClient
-        self.consoleWidget.exit_requested.connect(self.toggleIPython)
+        self.consoleWidget.exit_requested.connect(self.toggleJupyter)
         self.consoleWidget.set_default_style(colors='linux')
         self.consoleWidget.hide()
 
-        # Register a call-back function for the IPython shell. This one is
+        # Register a call-back function for the Jupyter shell. This one is
         # executed insite the child-kernel.
         #self.kernel.shell.register_post_execute(self.postExecute)
         #
-        # In IPython >= 2, we can use the event register
+        # In Jupyter >= 2, we can use the event register
         # Events: post_run_cell, pre_run_cell, etc...`
         self.kernel.shell.events.register('pre_execute', self.preExecute)
         self.kernel.shell.events.register('post_execute', self.postExecute)
@@ -252,10 +252,10 @@ class QtipWindow(QtGui.QMainWindow):
         self.plkWidget = PlkWidget(parent=self.mainFrame)
         self.plkWidget.hide()
 
-    def toggleIPython(self):
-        """Toggle the IPython widget on or off"""
+    def toggleJupyter(self):
+        """Toggle the Jupyter widget on or off"""
 
-        self.setQtipLayout(showIPython = not self.showIPython)
+        self.setQtipLayout(showJupyter = not self.showJupyter)
 
     def togglePlk(self):
         """Toggle the plk widget on or off"""
@@ -306,30 +306,30 @@ class QtipWindow(QtGui.QMainWindow):
             self.plkWidget.show()
         # Other widgets can be added here
 
-        if self.showIPython:
+        if self.showJupyter:
             self.consoleWidget.show()
         else:
             pass
 
         # Request focus back to the main widget
-        if self.whichWidget.lower() == 'plk' and not self.showIPython:
+        if self.whichWidget.lower() == 'plk' and not self.showJupyter:
             self.plkWidget.setFocusToCanvas()
         # Do it for other main widgets, if they exist
-        #elif self.whichWidget.lower() == 'binary' and not self.showIPython:
+        #elif self.whichWidget.lower() == 'binary' and not self.showJupyter:
         #    self.binaryWidget.setFocusToCanvas()
 
-        # Do we immediately get focus to the IPython console?
-        #elif self.showIPython:
+        # Do we immediately get focus to the Jupyter console?
+        #elif self.showJupyter:
         #    self.consoleWidget.setFocus()
 
-    def setQtipLayout(self, whichWidget=None, showIPython=None, firsttime=False):
+    def setQtipLayout(self, whichWidget=None, showJupyter=None, firsttime=False):
         """Given the current main widget, hide all the other widgets
         
         :param whichWidget:
             Which main widget we are showing right now
 
-        :param showIPython:
-            Whether to show the IPython console
+        :param showJupyter:
+            Whether to show the Jupyter console
 
         :param firsttime:
             Whether or not this is the first time setting the layout. If so,
@@ -339,8 +339,8 @@ class QtipWindow(QtGui.QMainWindow):
 
         if not whichWidget is None:
             self.whichWidget = whichWidget
-        if not showIPython is None:
-            self.showIPython = showIPython
+        if not showJupyter is None:
+            self.showJupyter = showJupyter
 
         # After hiding the widgets, wait 0 milliseonds before showing them again
         # (what a dirty hack, ugh!)
@@ -349,10 +349,10 @@ class QtipWindow(QtGui.QMainWindow):
 
         self.prevWhichWidget = self.whichWidget
 
-        if self.showIPython != self.prevShowIPython:
-            # IPython has been toggled
-            self.prevShowIPython = self.showIPython
-            if self.showIPython:
+        if self.showJupyter != self.prevShowJupyter:
+            # Jupyter has been toggled
+            self.prevShowJupyter = self.showJupyter
+            if self.showJupyter:
                 self.resize(1350, 550)
                 self.mainFrame.resize(1350, 550)
             else:
@@ -362,7 +362,7 @@ class QtipWindow(QtGui.QMainWindow):
         # TODO: How to do this more elegantly?
         if firsttime:
             # Set position slightly more to the left of the screen, so we can
-            # still open IPython
+            # still open Jupyter
             self.move(50, 100)
 
         self.mainFrame.setLayout(self.hbox)
@@ -378,7 +378,7 @@ class QtipWindow(QtGui.QMainWindow):
             The timfile to open. If none, ask the user
         """
 
-        self.setQtipLayout(whichWidget='plk', showIPython=self.showIPython)
+        self.setQtipLayout(whichWidget='plk', showJupyter=self.showJupyter)
 
         if parfilename is None and not testpulsar:
             parfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open par-file', '~/')
