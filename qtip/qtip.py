@@ -61,7 +61,7 @@ class QtipWindow(QtGui.QMainWindow):
         self.initUI()
 
         # Start the embedded Jupyter kernel
-        self.createJupyerKernel()
+        self.createJupyterKernel()
 
         # Create the display widgets
         self.createPlkWidget()
